@@ -1,1 +1,1 @@
-# COIN
+# BITCOIN forecast
