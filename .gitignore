@@ -1,0 +1,3 @@
+# 忽略 Python 虚拟环境
+coin/
+__pycache__/
