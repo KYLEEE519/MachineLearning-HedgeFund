@@ -4,6 +4,7 @@ from Strategies.simple_strategy import SimpleMovingAverageStrategy
 from Backtest.backtest import Backtester
 from Strategies.test_strategy import MovingAverageStrategy
 from Backtest.backtest_without_close_signal import Backtest
+from Strategies.strategy_1 import VolatilityStrategy
 # def main():
 #     # ========== 参数设置 ==========
 
@@ -88,7 +89,7 @@ def main():
     print("✅ 成功获取市场数据，开始策略计算...")
 
     # 4. 初始化并计算策略信号
-    strategy = MovingAverageStrategy(df)
+    strategy = VolatilityStrategy(df)
     strategy_df = strategy.get_strategy_df()
 
     # 注意：
