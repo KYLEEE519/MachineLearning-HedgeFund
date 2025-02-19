@@ -3,3 +3,8 @@ numpy
 python-okx
 matplotlib
 jupyter
+Prophet
+scikit-learn
+statsmodels
+pmdarima
+xgboost
