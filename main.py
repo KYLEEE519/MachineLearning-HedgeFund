@@ -74,7 +74,7 @@ from Backtest.backtest_without_close_signal import Backtest
 
 def main():
     # 1. 初始化数据抓取器
-    fetcher = OKXDataFetcher(instId="ETH-USDT")
+    fetcher = OKXDataFetcher(instId="BNB-USDT")
     
     # 2. 获取过去 1 天的 1m K 线数据
     fetcher.fetch_1m_data(days=1)
