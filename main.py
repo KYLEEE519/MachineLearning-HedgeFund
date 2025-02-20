@@ -91,7 +91,6 @@ def main():
     # 4. 初始化并计算策略信号
     strategy = VolatilityStrategy(df)
     strategy_df = strategy.get_strategy_df()
-
     # 注意：
     # `MovingAverageStrategy` 中我们定义了 `open_signal` 和 `close_signal`。
     # 当前 backtest_without_close_signal.py 只使用了 `open_signal`，请确认你在回测中如何使用或者忽略 `close_signal`.
