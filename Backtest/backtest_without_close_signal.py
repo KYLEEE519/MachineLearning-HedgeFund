@@ -52,6 +52,10 @@ class Backtest:
             # **开仓逻辑**
             if self.position is None and open_signal != 0:
                 self.open_trade(timestamp, open_, open_signal)
+        # **最后一个 K 线检查是否有未平仓单，如果有，直接用收盘价平仓**
+        if self.position is not None:
+            print(f"🚨 最后一个 K 线 {timestamp} 仍持仓，强制平仓！")
+            self.close_trade(timestamp, close)
 
     def open_trade(self, timestamp, price, direction):
         """执行开仓"""
