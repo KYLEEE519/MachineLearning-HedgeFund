@@ -14,3 +14,5 @@ fetcher.start_real_time_fetch() 后台线程持续获取新数据，每分钟的
 测试策略，策略对于df添加open_signal：1开多，-1开空，0无操作。close_signal：-1平多，1平空，0无操作。
 # excute
 每分钟第58秒更新数据，59.5秒对于新数据使用策略，并且返回包含策略的df
+# historydata.ipynb
+获取过去一年的数据代码保存到本地，自行调整
