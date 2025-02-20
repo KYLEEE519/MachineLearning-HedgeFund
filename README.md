@@ -16,3 +16,9 @@ fetcher.start_real_time_fetch() 后台线程持续获取新数据，每分钟的
 每分钟第58秒更新数据，59.5秒对于新数据使用策略，并且返回包含策略的df
 # historydata.ipynb
 获取过去一年的数据代码保存到本地，自行调整
+# data_clean
+原始数据转化成1分钟级的k线
+使用方法：
+processor = KlineProcessor("")填入地址
+kline_df = processor.get_kline_df()
+print(kline_df.head())  # 查看转换后的 K 线数据
