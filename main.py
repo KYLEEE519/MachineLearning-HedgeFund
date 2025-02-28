@@ -5,6 +5,7 @@ from Backtest.backtest import Backtester
 from Strategies.test_strategy import MovingAverageStrategy
 from Backtest.backtest_without_close_signal import Backtest
 from Strategies.strategy_1 import VolatilityStrategy
+from Strategies.WebSocketStrategy import WebSocketStrategy
 # def main():
 #     # ========== 参数设置 ==========
 
@@ -75,7 +76,7 @@ from Strategies.strategy_1 import VolatilityStrategy
 
 def main():
     # 1. 初始化数据抓取器
-    fetcher = OKXDataFetcher(instId="LUNA-USDT")
+    fetcher = OKXDataFetcher(instId="TRUMP-USDT")
     
     # 2. 获取过去 1 天的 1m K 线数据
     fetcher.fetch_1m_data(days=1)
@@ -89,7 +90,8 @@ def main():
     print("✅ 成功获取市场数据，开始策略计算...")
 
     # 4. 初始化并计算策略信号
-    strategy = VolatilityStrategy(df)
+    #strategy = VolatilityStrategy(df)
+    strategy = WebSocketStrategy(df)
     strategy_df = strategy.get_strategy_df()
     # 注意：
     # `MovingAverageStrategy` 中我们定义了 `open_signal` 和 `close_signal`。
