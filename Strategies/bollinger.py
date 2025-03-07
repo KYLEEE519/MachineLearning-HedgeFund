@@ -1,24 +1,37 @@
 import pandas as pd
 import numpy as np
 
-class BollingerBandStrategy:
-    def __init__(self, bb_window=20, bb_std_mult=3, fee_rate=0.001):
-        """
-        初始化布林带交易策略
-        :param bb_window: 布林带计算的移动平均窗口
-        :param bb_std_mult: 布林带标准差倍数
-        :param fee_rate: 交易手续费率
-        """
+class BollingerStrategy:
+    def __init__(self, 
+                 initial_balance=10000,
+                 leverage=10,
+                 position_ratio=0.1,
+                 open_fee_rate=0.0005,
+                 close_fee_rate=0.0002,
+                 take_profit_ratio=0.005,
+                 stop_loss_ratio=0.01,
+                 bb_window=20,
+                 bb_std_mult=3):
+        
+        # 资金参数
+        self.balance = initial_balance
+        self.leverage = leverage
+        self.position_ratio = position_ratio
+        
+        # 费用参数
+        self.open_fee_rate = open_fee_rate
+        self.close_fee_rate = close_fee_rate
+        
+        # 风险参数
+        self.take_profit_ratio = take_profit_ratio  # 总资金的0.5%
+        self.stop_loss_ratio = stop_loss_ratio      # 总资金的1%
+        
+        # 布林带参数
         self.bb_window = bb_window
         self.bb_std_mult = bb_std_mult
-        self.fee_rate = fee_rate
-
+        
     def calculate_bollinger_bands(self, df):
-        """
-        计算布林带指标
-        :param df: 包含 'close' 价格的 DataFrame
-        :return: 计算后的 DataFrame
-        """
+        """计算布林带指标"""
         df = df.copy()
         df['ma'] = df['close'].rolling(self.bb_window).mean()
         df['std'] = df['close'].rolling(self.bb_window).std(ddof=0)
@@ -28,54 +41,57 @@ class BollingerBandStrategy:
 
     def generate_signal(self, df):
         """
-        生成交易信号
-        :param df: 包含 'high' 和 'low' 价格的 DataFrame
-        :return: 1（做多）, -1（做空）, 0（无操作）
+        生成交易信号和止盈止损价格
+        返回: (signal, take_profit_price, stop_loss_price)
         """
-        if len(df) < self.bb_window + 2:  # 确保至少有足够的数据
-            return 0
-
+        if len(df) < self.bb_window:
+            return 0, None, None
+        
         df = self.calculate_bollinger_bands(df)
-
+        
         current = df.iloc[-1]
         prev = df.iloc[-2]
+        signal = 0
 
-        # 做空信号：上轨突破
+        # 做空信号
         if prev['high'] < prev['upper'] and current['high'] >= current['upper']:
-            return -1
+            signal = -1
+            
+        # 做多信号
+        elif prev['low'] > prev['lower'] and current['low'] <= current['lower']:
+            signal = 1
+            
+        else:
+            return 0, None, None
+        
+        # 以当前收盘价作为开仓价格
+        entry_price = current['close']
+        
+        # 避免除 0 错误
+        if entry_price <= 0:
+            return 0, None, None
+        
+        # 计算仓位
+        position_value = self.balance * self.position_ratio * self.leverage
+        position_size = position_value / entry_price
+        
+        # 计算手续费
+        open_fee = position_size * entry_price * self.open_fee_rate
+        
+        # 计算目标盈利和最大亏损（基于总资金）
+        target_profit = self.balance * self.take_profit_ratio
+        max_loss = self.balance * self.stop_loss_ratio
+        
+        # 计算止盈止损价格
+        if signal == 1:  # 做多
+            take_profit_price = entry_price + ((target_profit - open_fee) / (position_size * (1 - self.close_fee_rate)))
+            stop_loss_price = entry_price - ((max_loss + open_fee) / (position_size * (1 + self.close_fee_rate)))
+        else:  # 做空
+            take_profit_price = entry_price - ((target_profit - open_fee) / (position_size * (1 + self.close_fee_rate)))
+            stop_loss_price = entry_price + ((max_loss + open_fee) / (position_size * (1 - self.close_fee_rate)))
+        
+        return signal, round(take_profit_price, 4), round(stop_loss_price, 4)
 
-        # 做多信号：下轨突破
-        if prev['low'] > prev['lower'] and current['low'] <= current['lower']:
-            return 1
-
-        return 0
-
-    def check_exit_conditions(self, position_info, current_candle):
-        """
-        检查是否需要平仓
-        :param position_info: 记录当前仓位的信息
-        :param current_candle: 当前K线数据（包含 'high' 和 'low'）
-        :return: True（平仓）, False（继续持有）
-        """
-        entry_price = position_info['entry_price']
-        direction = position_info['direction']
-        position_size = position_info['position_size']
-
-        if direction == 1:  # 多单
-            unrealized_pnl = (current_candle['high'] - entry_price) * position_size
-            close_fee = position_size * current_candle['high'] * self.fee_rate
-        else:  # 空单
-            unrealized_pnl = (entry_price - current_candle['low']) * position_size
-            close_fee = position_size * current_candle['low'] * self.fee_rate
-
-        net_pnl = unrealized_pnl - position_info['open_fee'] - close_fee
-
-        # 止盈检查
-        if net_pnl >= position_info['target_profit']:
-            return True
-
-        # 止损检查
-        if unrealized_pnl <= -abs(position_info['stop_loss']):
-            return True
-
-        return False
+    def update_balance(self, new_balance):
+        """更新账户资金（在平仓后调用）"""
+        self.balance = new_balance
