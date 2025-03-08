@@ -1,5 +1,5 @@
 import pandas as pd
-
+import numpy as pd
 class MartingaleStrategy:
     def __init__(self, df, leverage_list, position_list):
         self.df = df.copy()
