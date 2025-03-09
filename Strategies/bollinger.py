@@ -8,7 +8,7 @@ class BollingerStrategy:
                  position_ratio=0.1,
                  open_fee_rate=0.0005,
                  close_fee_rate=0.0002,
-                 take_profit_ratio=0.005,
+                 take_profit_ratio=0.01,
                  stop_loss_ratio=0.01,
                  bb_window=20,
                  bb_std_mult=3):
