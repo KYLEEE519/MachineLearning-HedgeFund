@@ -84,7 +84,7 @@ class OKXKlineFetcher:
             return None  # ❌ 没有更新，不输出
 
     def update_5min_kline(self, latest_second_kline):
-        """ 每次秒级 K 线更新，就实时更新 5 分钟 K 线，并存入缓冲区 """
+        """ 实时更新 5 分钟 K 线，并存入缓冲区 """
         with self.lock:
             if latest_second_kline is None:
                 print("⚠️ `latest_second_kline` 为空，无法更新 5 分钟 K 线")
@@ -93,14 +93,16 @@ class OKXKlineFetcher:
             latest_time = latest_second_kline["second"]
             current_5min_time = latest_time.floor("5min")
 
-            # ✅ 如果 5 分钟窗口变更，存储旧数据并开启新的 5 分钟 K 线
+            # 如果 5 分钟窗口切换，说明上一根 5 分钟 K 线已完整
             if self.current_5min_start is None or current_5min_time > self.current_5min_start:
+                # 如果有旧的 5 分钟 K 线，则先 print 并将其视为完成，存入历史记录
                 if self.current_5min_kline is not None:
-                    print(f"🔥 [完整 5 分钟 K 线] {self.current_5min_kline}")  
-                    kline_buffer.update_main_buffer(latest_second_kline, self.current_5min_kline)
-                    kline_buffer.swap_buffers()  # ✅ 交换缓冲
+                    print(f"🔥 [完整 5 分钟 K 线] {self.current_5min_kline}")
+                    # 完成的一根 5 分钟 K 线，写入 buffer 并追加到历史记录
+                    kline_buffer.update_main_buffer(latest_second_kline, self.current_5min_kline, finished=True)
+                    kline_buffer.swap_buffers()
 
-                # ✅ 开启新的 5 分钟 K 线
+                # 开启新的 5 分钟 K 线
                 self.current_5min_start = current_5min_time
                 self.current_5min_kline = {
                     "timestamp": current_5min_time,
@@ -111,16 +113,17 @@ class OKXKlineFetcher:
                     "vol": float(latest_second_kline["vol"])
                 }
             else:
-                # ✅ 实时更新 5 分钟 K 线
+                # 实时更新当前 5 分钟 K 线
                 self.current_5min_kline["high"] = max(self.current_5min_kline["high"], float(latest_second_kline["high"]))
                 self.current_5min_kline["low"] = min(self.current_5min_kline["low"], float(latest_second_kline["low"]))
                 self.current_5min_kline["close"] = float(latest_second_kline["close"])
                 self.current_5min_kline["vol"] += float(latest_second_kline["vol"])
 
-            # ✅ **每次 5 分钟 K 线更新，都存入 `buffer`**
-            kline_buffer.update_main_buffer(latest_second_kline, self.current_5min_kline)
-            kline_buffer.swap_buffers()  # ✅ 交换缓冲
-            print(f"✅ [BUFFER] 5 分钟 K 线实时存入: {self.current_5min_kline}")  
+            # 每次秒级 K 线更新时，存入最新（未完成的）5 分钟 K 线，不追加历史（finished=False）
+            kline_buffer.update_main_buffer(latest_second_kline, self.current_5min_kline, finished=False)
+            kline_buffer.swap_buffers()
+            print(f"✅ [BUFFER] 5 分钟 K 线实时存入: {self.current_5min_kline}")
 
             return self.current_5min_kline
+
 
