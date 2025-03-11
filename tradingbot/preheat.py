@@ -5,7 +5,7 @@ from okx import MarketData
 from buffer import kline_buffer  # ✅ 导入双缓冲
 import numpy as np
 
-def fetch_5m_data(instId="DOGE-USDT-SWAP", num_bars=22):
+def fetch_5m_data(instId="DOGE-USDT-SWAP", num_bars=21):
     """
     获取最近 num_bars 根 5 分钟 K 线数据
     """
