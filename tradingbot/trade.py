@@ -1,10 +1,11 @@
 import time
 import okx.Account as Account
 import okx.Trade as Trade
-from Strategies.bollinger import BollingerStrategy  # ✅ 直接调用策略函数
+from bollinger import BollingerStrategy  # ✅ 直接调用策略函数
 import time
 import ujson  # 更快的 JSON 解析库
-
+from okx import MarketData 
+import pandas as pd
 # **API 初始化**
 apikey = "df95c4bf-60e4-43b7-bc11-e2685f608605"
 secretkey = "3B0DBD08C69C46C4C39AEB36B46A1731"
@@ -13,6 +14,33 @@ passphrase = "Qinmeng123@"
 flag = "0"  # 实盘: 0, 模拟盘: 1
 accountAPI = Account.AccountAPI(apikey, secretkey, passphrase, False, flag)
 tradeAPI = Trade.TradeAPI(apikey, secretkey, passphrase, False, flag)
+
+def get_latest_5m_kline(instId="DOGE-USDT-SWAP", num_bars=22):
+    """
+    直接请求最近 num_bars (默认22) 根 5 分钟 K 线数据，并返回 DataFrame
+    """
+    market = MarketData.MarketAPI(api_key="", api_secret_key="", passphrase="", flag="0")
+
+    try:
+        params = {"instId": instId, "bar": "5m", "limit": num_bars}
+        resp = market.get_candlesticks(**params)
+
+        if resp.get("code") != "0":
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "vol"])  # 返回空 DataFrame 以防止错误
+        all_data = resp.get("data", [])
+        if not all_data:
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "vol"])  # 返回空 DataFrame
+        columns = ["timestamp", "open", "high", "low", "close", "vol", "volCcy", "volCcyQuote", "confirm"]
+        full_df = pd.DataFrame(all_data, columns=columns)
+        df = full_df[["timestamp", "open", "high", "low", "close", "vol"]].copy()
+        numeric_cols = ["open", "high", "low", "close", "vol"]
+        df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+        df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms", utc=True).dt.tz_convert(None)
+        df = df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+        return df
+
+    except Exception:
+        return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "vol"])
 
 def get_account_balance():
     """获取 USDT 可用保证金"""
@@ -46,10 +74,12 @@ def execute_trade():
     3. 根据信号执行交易（开多 / 开空）
     4. 该函数仅执行一次，循环逻辑在 `main()` 里
     """
-    df = ()
+    df = get_latest_5m_kline()
+    print(df.tail(2))
     usdt_avail_eq = get_account_balance()  # **查询可用保证金**
     has_position = get_positions()  # **查询是否持仓**
-    signal, tpTriggerPx, slTriggerPx, size = BollingerStrategy(df=df, initial_balance=usdt_avail_eq)
+    strategy = BollingerStrategy(df=df, initial_balance=usdt_avail_eq)
+    signal, tpTriggerPx, slTriggerPx, size = strategy.generate_signal(len(df) - 1)
 
     # **如果已有持仓，不执行交易**
     if has_position:
@@ -62,7 +92,7 @@ def execute_trade():
         return
 
     # **计算实际交易量**
-    sz = round(size / 1000, 6)  # 交易数量 / 1000，并四舍五入
+    sz = round(size / 1000, 2)  # 交易数量 / 1000，并四舍五入
 
     # **设置交易方向**
     side = "buy" if signal == 1 else "sell"
