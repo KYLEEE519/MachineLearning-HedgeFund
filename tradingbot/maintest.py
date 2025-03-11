@@ -27,28 +27,24 @@ def main():
     # 交易线程：周期性执行交易逻辑
     def trade_loop():
         while True:
-            execute_trade()  # 内部会从全局 buffer 获取最新的历史+实时数据构造 DataFrame
+            execute_trade()  # 只显示交易信号的 print
             time.sleep(0.3)
     trade_thread = threading.Thread(target=trade_loop, daemon=False)
     trade_thread.start()
 
-    try:
-        # 主循环：打印调试 buffer 中的数据
+    # 监测活跃线程数
+    def monitor_threads():
         while True:
-            latest_kline = kline_buffer.get_latest_kline()
-            if latest_kline["five_min_kline"] is not None:
-                print(f"📊 [策略] 读取最新 5 分钟 K 线: {latest_kline['five_min_kline']}")
-                print(f"📊 [策略] 读取最新 秒级 K 线: {latest_kline['second_kline']}")
-            else:
-                print("⚠️ [BUFFER] `five_min_kline` 仍然是 None")
-            history = kline_buffer.get_history()
-            if history:
-                print("📜 [历史] 5 分钟 K 线历史记录：")
-                for idx, kl in enumerate(history):
-                    print(f"  #{idx+1}: {kl}")
-            else:
-                print("📜 [历史] 目前无历史记录")
-            time.sleep(1)
+            print(f"🛠️ 活跃线程数: {threading.active_count()}, 线程列表: {[t.name for t in threading.enumerate()]}")
+            time.sleep(5)  # 每 5 秒打印一次
+
+    monitor_thread = threading.Thread(target=monitor_threads, daemon=True)
+    monitor_thread.start()
+
+    try:
+        # 主循环（去掉所有 print，只监测交易信号和线程状态）
+        while True:
+            time.sleep(1)  # 主线程不需要打印，避免输出干扰
     except KeyboardInterrupt:
         print("收到退出信号，正在退出...")
         ws_thread.join(timeout=1)
