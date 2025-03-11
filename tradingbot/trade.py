@@ -46,9 +46,10 @@ def execute_trade():
     3. 根据信号执行交易（开多 / 开空）
     4. 该函数仅执行一次，循环逻辑在 `main()` 里
     """
+    df = ()
     usdt_avail_eq = get_account_balance()  # **查询可用保证金**
     has_position = get_positions()  # **查询是否持仓**
-    signal, tpTriggerPx, slTriggerPx, size = BollingerStrategy()
+    signal, tpTriggerPx, slTriggerPx, size = BollingerStrategy(df=df, initial_balance=usdt_avail_eq)
 
     # **如果已有持仓，不执行交易**
     if has_position:

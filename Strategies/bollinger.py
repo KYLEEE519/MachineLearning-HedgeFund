@@ -93,4 +93,4 @@ class BollingerStrategy:
             take_profit_price = ((entry_price * position_size) - target_profit - open_fee) / (position_size * (1 + self.close_fee_rate))
             stop_loss_price = (max_loss + (entry_price * position_size) + open_fee + max_loss * self.close_fee_rate) / position_size
 
-        return signal, round(take_profit_price, 4), round(stop_loss_price, 4), position_size
+        return signal, round(take_profit_price, 5), round(stop_loss_price, 5), position_size
