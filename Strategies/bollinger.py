@@ -7,7 +7,7 @@ class BollingerStrategy:
                  leverage=10,
                  position_ratio=0.1,
                  open_fee_rate=0.0005,
-                 close_fee_rate=0.0002,
+                 close_fee_rate=0.0005,
                  take_profit_ratio=0.01,
                  stop_loss_ratio=0.01,
                  bb_window=20,
@@ -84,12 +84,12 @@ class BollingerStrategy:
         
         # 计算止盈止损价格
         if signal == 1:  # 做多
-            take_profit_price = entry_price + ((target_profit - open_fee) / (position_size * (1 - self.close_fee_rate)))
-            stop_loss_price = entry_price - ((max_loss + open_fee) / (position_size * (1 + self.close_fee_rate)))
-        else:  # 做空
-            take_profit_price = entry_price - ((target_profit - open_fee) / (position_size * (1 + self.close_fee_rate)))
-            stop_loss_price = entry_price + ((max_loss + open_fee) / (position_size * (1 - self.close_fee_rate)))
-        
+            take_profit_price = (target_profit + (entry_price * position_size) + open_fee) / (position_size * (1 - self.close_fee_rate))
+            stop_loss_price = ((entry_price * position_size) - max_loss - open_fee - max_loss * self.close_fee_rate) / position_size
+        elif signal == -1:  # 做空
+            take_profit_price = ((entry_price * position_size) - target_profit - open_fee) / (position_size * (1 + self.close_fee_rate))
+            stop_loss_price = (max_loss + (entry_price * position_size) + open_fee + max_loss * self.close_fee_rate) / position_size
+
         return signal, round(take_profit_price, 4), round(stop_loss_price, 4)
 
     def update_balance(self, new_balance):
