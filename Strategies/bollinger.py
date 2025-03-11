@@ -3,6 +3,7 @@ import numpy as np
 
 class BollingerStrategy:
     def __init__(self, 
+                 df,  # 新增参数
                  initial_balance=10000,
                  leverage=10,
                  position_ratio=0.1,
@@ -23,13 +24,17 @@ class BollingerStrategy:
         self.close_fee_rate = close_fee_rate
         
         # 风险参数
-        self.take_profit_ratio = take_profit_ratio  # 总资金的0.5%
-        self.stop_loss_ratio = stop_loss_ratio      # 总资金的1%
+        self.take_profit_ratio = take_profit_ratio  
+        self.stop_loss_ratio = stop_loss_ratio      
         
         # 布林带参数
         self.bb_window = bb_window
         self.bb_std_mult = bb_std_mult
         
+        # 存储数据
+        self.df = df.copy()
+        self.df = self.calculate_bollinger_bands(self.df)
+
     def calculate_bollinger_bands(self, df):
         """计算布林带指标"""
         df = df.copy()
@@ -39,18 +44,17 @@ class BollingerStrategy:
         df['lower'] = df['ma'] - df['std'] * self.bb_std_mult
         return df
 
-    def generate_signal(self, df):
+    def generate_signal(self, index):
         """
         生成交易信号和止盈止损价格
-        返回: (signal, take_profit_price, stop_loss_price)
+        index: 当前K线索引
+        返回: (signal, take_profit_price, stop_loss_price, position_size)
         """
-        if len(df) < self.bb_window:
-            return 0, None, None
-        
-        df = self.calculate_bollinger_bands(df)
-        
-        current = df.iloc[-1]
-        prev = df.iloc[-2]
+        if index < self.bb_window:
+            return 0, None, None, None
+
+        current = self.df.iloc[index]
+        prev = self.df.iloc[index - 1]
         signal = 0
 
         # 做空信号
@@ -62,20 +66,18 @@ class BollingerStrategy:
             signal = 1
             
         else:
-            return 0, None, None
+            return 0, None, None, None
         
         # 以当前收盘价作为开仓价格
         entry_price = current['close']
         
-        # 避免除 0 错误
         if entry_price <= 0:
-            return 0, None, None
+            return 0, None, None, None
         
         # 计算仓位
         position_value = self.balance * self.position_ratio * self.leverage
-
-        position_size = position_value / entry_price
-        position_size=round(position_size / 10) * 10
+        position_size = round(position_value / entry_price / 10) * 10  # 取整为10的倍数
+        
         # 计算手续费
         open_fee = position_size * entry_price * self.open_fee_rate
         
