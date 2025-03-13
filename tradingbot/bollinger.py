@@ -8,7 +8,7 @@ class BollingerStrategy:
                  leverage=10,
                  position_ratio=0.1,
                  open_fee_rate=0.0005,
-                 close_fee_rate=0.0005,
+                 close_fee_rate=0.0002,
                  take_profit_ratio=0.01,
                  stop_loss_ratio=0.01,
                  bb_window=20,
@@ -39,9 +39,12 @@ class BollingerStrategy:
         """计算布林带指标"""
         df = df.copy()
         df['ma'] = df['close'].rolling(self.bb_window).mean()
+        df['ma'] = df['ma'].apply(lambda x: int(x * 10**5) / 10**5 if not np.isnan(x) else x)
         df['std'] = df['close'].rolling(self.bb_window).std(ddof=0)
         df['upper'] = df['ma'] + df['std'] * self.bb_std_mult
         df['lower'] = df['ma'] - df['std'] * self.bb_std_mult
+        df['upper'] = df['upper'].round(5)
+        df['lower'] = df['lower'].round(5)
         return df
 
     def generate_signal(self, index):
@@ -51,6 +54,7 @@ class BollingerStrategy:
         返回: (signal, take_profit_price, stop_loss_price, position_size)
         """
         if index < self.bb_window:
+            print(1)
             return 0, None, None, None
 
         current = self.df.iloc[index]
@@ -88,9 +92,9 @@ class BollingerStrategy:
         # 计算止盈止损价格
         if signal == 1:  # 做多
             take_profit_price = (target_profit + (entry_price * position_size) + open_fee) / (position_size * (1 - self.close_fee_rate))
-            stop_loss_price = ((entry_price * position_size) - max_loss - open_fee - max_loss * self.close_fee_rate) / position_size
+            stop_loss_price = (entry_price * position_size + open_fee - max_loss) / (position_size * (1 - self.close_fee_rate))
         elif signal == -1:  # 做空
             take_profit_price = ((entry_price * position_size) - target_profit - open_fee) / (position_size * (1 + self.close_fee_rate))
-            stop_loss_price = (max_loss + (entry_price * position_size) + open_fee + max_loss * self.close_fee_rate) / position_size
+            stop_loss_price = (entry_price * position_size - open_fee + max_loss) / (position_size * (1 + self.close_fee_rate))
 
         return signal, round(take_profit_price, 5), round(stop_loss_price, 5), position_size

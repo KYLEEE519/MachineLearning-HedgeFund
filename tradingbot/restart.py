@@ -1,19 +1,21 @@
 import time
 import subprocess
 
-script_path = "trade.py"  # 你的交易脚本路径
+script_path = "trade.py"
+max_restarts = 50  # **最多重启 5 次**
+restart_count = 0
 
-while True:
+while restart_count < max_restarts:
     print(f"🚀 正在启动交易脚本: {script_path}")
     
-    # 启动交易脚本，并保持终端输出
-    process = subprocess.Popen(["python", script_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    process = subprocess.run(["python", script_path])
 
-    # 实时打印交易脚本的输出
-    for line in iter(process.stdout.readline, ''):
-        print(line, end='')  # **输出交易脚本日志**
+    restart_count += 1
+    print(f"⚠️ 交易脚本被终止，第 {restart_count} 次重启...")
+    
+    if restart_count >= max_restarts:
+        print("❌ 交易脚本多次失败，停止自动重启！")
+        break
+    
+    time.sleep(1)
 
-    process.wait()  # **等待交易脚本运行结束**
-
-    print("⚠️ 交易脚本被中断，1 秒后重新启动...")
-    time.sleep(1)  # **防止无限快速重启**

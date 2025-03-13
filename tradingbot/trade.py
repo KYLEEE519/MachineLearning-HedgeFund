@@ -76,10 +76,10 @@ def execute_trade():
     3. 根据信号执行交易（开多 / 开空）
     4. 该函数仅执行一次，循环逻辑在 `main()` 里
     """
-    df = get_latest_5m_kline()
-    print(df.tail(2))
     usdt_avail_eq = get_account_balance()  # **查询可用保证金**
     has_position = check_get_positions()  # **查询是否持仓**
+    df = get_latest_5m_kline()
+    print(df.tail(2))
     strategy = BollingerStrategy(df=df, initial_balance=usdt_avail_eq)
     signal, tpTriggerPx, slTriggerPx, size = strategy.generate_signal(len(df) - 1)
     print(signal, tpTriggerPx, slTriggerPx, size)
@@ -127,11 +127,15 @@ def execute_trade():
         attachAlgoOrds=[  # **止盈止损**
             {
                 "tpTriggerPx": str(tpTriggerPx),  # **止盈触发价格**
-                "tpOrdPx": "-1",  # **市价止盈**
+                "tpOrdPx": str(tpTriggerPx),  # **市价止盈**
+                "tpOrdKind": "limit",  # **止盈订单类型：限价单**
+                "tpTriggerPxType": "last"  # **触发类型（最新价）**
             },
             {
                 "slTriggerPx": str(slTriggerPx),  # **止损触发价格**
-                "slOrdPx": "-1",  # **市价止损**
+                "slOrdPx": str(slTriggerPx),  # **市价止损**
+                "slOrdKind": "limit",  # **止损订单类型：限价单**
+                "slTriggerPxType": "last"  # **触发类型（最新价）**
             }
         ]
     )
