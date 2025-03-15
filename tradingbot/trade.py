@@ -14,22 +14,23 @@ passphrase = "Qinmeng123@"
 flag = "0"  # 实盘: 0, 模拟盘: 1
 accountAPI = Account.AccountAPI(apikey, secretkey, passphrase, False, flag)
 tradeAPI = Trade.TradeAPI(apikey, secretkey, passphrase, False, flag)
+market = MarketData.MarketAPI(api_key="", api_secret_key="", passphrase="", flag="0")
 
 def get_latest_5m_kline(instId="DOGE-USDT-SWAP", num_bars=22):
     """
     直接请求最近 num_bars (默认22) 根 5 分钟 K 线数据，并返回 DataFrame
     """
-    market = MarketData.MarketAPI(api_key="", api_secret_key="", passphrase="", flag="0")
+    # market = MarketData.MarketAPI(api_key="", api_secret_key="", passphrase="", flag="0")
 
     try:
         params = {"instId": instId, "bar": "5m", "limit": num_bars}
         resp = market.get_candlesticks(**params)
 
         if resp.get("code") != "0":
-            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "vol"])  # 返回空 DataFrame 以防止错误
+            raise RuntimeError(f"❌ get_candlesticks/API 请求失败: {resp.get('msg')} (code={resp.get('code')})") 
         all_data = resp.get("data", [])
         if not all_data:
-            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "vol"])  # 返回空 DataFrame
+            raise RuntimeError(f"❌ get_candlesticks/API 请求失败: {resp.get('msg')} (code={resp.get('code')})") 
         columns = ["timestamp", "open", "high", "low", "close", "vol", "volCcy", "volCcyQuote", "confirm"]
         full_df = pd.DataFrame(all_data, columns=columns)
         df = full_df[["timestamp", "open", "high", "low", "close", "vol"]].copy()
@@ -40,13 +41,14 @@ def get_latest_5m_kline(instId="DOGE-USDT-SWAP", num_bars=22):
         return df
 
     except Exception:
-        return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "vol"])
+        raise RuntimeError(f"❌ get_candlesticks/API 请求失败: {resp.get('msg')} (code={resp.get('code')})") 
 
 def get_account_balance():
     """获取 USDT 可用保证金"""
     result = accountAPI.get_account_balance()
     result = ujson.loads(ujson.dumps(result))  # 更快的 JSON 解析
-
+    if result.get("code") != "0":
+        raise RuntimeError(f"❌ get_account_balance/API 请求失败: {result.get('msg')} (code={result.get('code')})")
     # **查找 USDT 可用保证金**
     usdt_avail_eq = next(
         (float(asset["availEq"]) for account in result.get("data", [])
@@ -55,18 +57,18 @@ def get_account_balance():
     )
     return usdt_avail_eq
 
-def get_positions():
-    """获取 DOGE 永续合约持仓信息"""
-    result = accountAPI.get_positions({"instType": "SWAP", "instId": "DOGE-USDT-SWAP"})
-    result = ujson.loads(ujson.dumps(result))  # 更快的 JSON 解析
+def check_get_positions():
+    """检查是否有 DOGE 永续合约持仓 (无论是 long 还是 short)"""
+    result = accountAPI.get_positions()
+    result = ujson.loads(ujson.dumps(result))  # 解析 JSON
+    if result.get("code") != "0":
+        raise RuntimeError(f"❌ get_positions/API 请求失败: {result.get('msg')} (code={result.get('code')})")
+    for position in result["data"]:
+        if position.get("instId") == "DOGE-USDT-SWAP" and float(position.get("pos", 0)) > 0:
+            return True  # **找到持仓，返回 True**
 
-    # **查找 DOGE-USDT-SWAP 持仓信息**
-    doge_position = next(
-        (position for position in result.get("data", []) if position.get("instId") == "DOGE-USDT-SWAP"),
-        None
-    )
+    return False  # **未找到持仓**
 
-    return bool(doge_position)  # **返回是否持仓**
 def execute_trade():
     """
     1. 调用 `BollingerStrategy()` 获取交易信号
@@ -74,13 +76,13 @@ def execute_trade():
     3. 根据信号执行交易（开多 / 开空）
     4. 该函数仅执行一次，循环逻辑在 `main()` 里
     """
+    usdt_avail_eq = get_account_balance()  # **查询可用保证金**
+    has_position = check_get_positions()  # **查询是否持仓**
     df = get_latest_5m_kline()
     print(df.tail(2))
-    usdt_avail_eq = get_account_balance()  # **查询可用保证金**
-    has_position = get_positions()  # **查询是否持仓**
     strategy = BollingerStrategy(df=df, initial_balance=usdt_avail_eq)
     signal, tpTriggerPx, slTriggerPx, size = strategy.generate_signal(len(df) - 1)
-
+    print(signal, tpTriggerPx, slTriggerPx, size)
     # **如果已有持仓，不执行交易**
     if has_position:
         print("已有持仓，跳过交易。")
@@ -102,15 +104,17 @@ def execute_trade():
     print(f"止盈触发价格: {tpTriggerPx}, 止损触发价格: {slTriggerPx}")
 
     # **第一步：设置持仓模式（开平仓模式）**
-    accountAPI.set_position_mode(posMode="long_short_mode")
-
+    result = accountAPI.set_position_mode(posMode="long_short_mode")
+    if result.get("code") != "0":
+        raise RuntimeError(f"❌ set_position_mode/API 请求失败: {result.get('msg')} (code={result.get('code')})")
     # **第二步：设置杠杆倍数（10倍）**
-    accountAPI.set_leverage(
+    result = accountAPI.set_leverage(
         instId="DOGE-USDT-SWAP",
         lever="10",
         mgnMode="cross"
     )
-
+    if result.get("code") != "0":
+        raise RuntimeError(f"❌ set_leverage/API 请求失败: {result.get('msg')} (code={result.get('code')})")
     # **第三步：市价买入 / 卖出 + 止盈止损**
     order_result = tradeAPI.place_order(
         instId="DOGE-USDT-SWAP",  # 交易对
@@ -123,22 +127,34 @@ def execute_trade():
         attachAlgoOrds=[  # **止盈止损**
             {
                 "tpTriggerPx": str(tpTriggerPx),  # **止盈触发价格**
-                "tpOrdPx": "-1",  # **市价止盈**
+                "tpOrdPx": str(tpTriggerPx),  # **市价止盈**
+                "tpOrdKind": "limit",  # **止盈订单类型：限价单**
+                "tpTriggerPxType": "last"  # **触发类型（最新价）**
             },
             {
                 "slTriggerPx": str(slTriggerPx),  # **止损触发价格**
-                "slOrdPx": "-1",  # **市价止损**
+                "slOrdPx": str(slTriggerPx),  # **市价止损**
+                "slOrdKind": "limit",  # **止损订单类型：限价单**
+                "slTriggerPxType": "last"  # **触发类型（最新价）**
             }
         ]
     )
-
+    if order_result.get("code") != "0":
+        raise RuntimeError(f"❌ place_order/API 请求失败: {order_result.get('msg')} (code={order_result.get('code')})")
     print(f"下单结果: {order_result}")
 
 # **主循环**
 def main():
-    while True:
-        execute_trade()  # **执行交易**
-        time.sleep(0.3)  # **每 0.3 秒执行一次**
+    try:
+        while True:
+            execute_trade()  # **执行交易**
+            time.sleep(0.4)  # **每 0.4 秒执行一次**
+    except RuntimeError as e:
+        print(f"🚨 交易中断: {e}")  # **API 错误，立即停止交易**
+        exit(1)
+    except Exception as e:
+        print(f"⚠️ 未知错误: {e}")  # **捕获其他错误**
+        exit(1)
 
 # **运行交易任务**
 if __name__ == "__main__":
