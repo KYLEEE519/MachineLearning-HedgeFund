@@ -1,6 +1,3 @@
-import pandas as pd
-import numpy as np
-
 class BollingerStrategy:
     def __init__(self, 
                  df,  # 新增参数
@@ -44,6 +41,12 @@ class BollingerStrategy:
         df['lower'] = df['ma'] - df['std'] * self.bb_std_mult
         return df
 
+    def update_balance(self, new_balance):
+        """
+        更新策略内部的余额信息，以便后续计算仓位时使用最新余额
+        """
+        self.balance = new_balance
+
     def generate_signal(self, index):
         """
         生成交易信号和止盈止损价格
@@ -64,17 +67,15 @@ class BollingerStrategy:
         # 做多信号
         elif prev['low'] > prev['lower'] and current['low'] <= current['lower']:
             signal = 1
-            
         else:
             return 0, None, None, None
         
         # 以当前收盘价作为开仓价格
         entry_price = current['close']
-        
         if entry_price <= 0:
             return 0, None, None, None
         
-        # 计算仓位
+        # 使用最新的余额来计算仓位
         position_value = self.balance * self.position_ratio * self.leverage
         position_size = round(position_value / entry_price / 10) * 10  # 取整为10的倍数
         
