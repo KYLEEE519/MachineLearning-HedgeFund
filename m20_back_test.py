@@ -28,8 +28,8 @@ def main():
         print("获取K线数据为空，无法继续回测")
         return
     
-    print("获取到的K线数据最后5行:")
-    print(df.head(5))
+    # print("获取到的K线数据最后5行:")
+    # print(df.head(5))
     
     # ========== B. 初始化策略与交易所 ==========
     strategy = Ma20Strategy(df=df, ma_length=20, position_ratio=0.5)
@@ -56,14 +56,25 @@ def main():
         # 1) 发数据机器人（可选）
         recent_data = get_recent_kline_data(df, current_time, n)
         current_position = get_current_position(exchange, symbol="BTC-USDT")
-        # 2) 策略生成信号
-        signal = strategy.generate_signal(
+        # 2) 先生成初始信号（但不执行开仓）
+        raw_signal = strategy.generate_signal(
             index=i,
-            current_balance=exchange.balance,
+            current_balance=exchange.balance,  # **当前 balance**
             leverage=exchange.leverage,
             current_position=current_position
         )
-        
+        # 3) 先处理平仓
+        exchange.process_closing(symbol="BTC-USDT", kline=current_kline, signal=raw_signal)
+        # 4) 重新获取持仓方向（防止平仓后持仓方向变化）
+        updated_position = get_current_position(exchange, symbol="BTC-USDT")
+        # 5) 重新获取新的 balance，计算新的开仓信号
+        new_signal = strategy.generate_signal(
+            index=i,
+            current_balance=exchange.balance,  # **使用更新后的 balance**
+            leverage=exchange.leverage,
+            current_position=updated_position
+        )
+
         # >>>>>>>>>>>>>>>>>>>>>> DEBUG 打印开始 <<<<<<<<<<<<<<<<<<<<<<
         # 你可以在这里把当前K线信息，以及策略返回的信号都打印出来
         # 这样就能看到每根K线策略输出了什么
@@ -72,15 +83,20 @@ def main():
         #       f"L={current_kline['low']}, C={current_kline['close']} => signal={signal}")
         # >>>>>>>>>>>>>>>>>>>>>> DEBUG 打印结束 <<<<<<<<<<<<<<<<<<<<<<
         
-        # 3) 将信号交给交易所
-        exchange.process_kline(symbol="BTC-USDT", kline=current_kline.to_dict(), signal=signal)
-    if exchange.positions:
-        exchange.restore_last_state()
+        # 6) 处理开仓
+        exchange.process_opening(symbol="BTC-USDT", kline=current_kline, signal=new_signal)
+        # print('time',i, exchange.balance)
+
     # ========== D. 输出回测结果 ==========
     print("\n--- 回测结果汇总 ---")
     print("最终账户余额:", exchange.balance)
     print("剩余持仓:", exchange.positions)
-    print("交易日志:")
+    # 获取最后一根K线的收盘价
+    final_price = df.iloc[-1]["close"]
+    total_balance, roi, total_trades = exchange.calculate_total_balance_and_roi(final_price)
+    print(f"总余额（账户余额 + 持仓价值）: {total_balance:.5f}")
+    print(f"盈亏比（ROI）: {roi:.3f}%")
+    print(f"总交易次数（开仓 + 平仓）: {total_trades} 笔")
     # for log in exchange.trade_log:
     #     print(log)
 
