@@ -255,7 +255,7 @@ class SimulatedExchange:
         total_balance = self.balance
         for symbol, positions in self.positions.items():
             for pos in positions:
-                position_value = pos['size'] * current_price  # 计算当前持仓市值
+                position_value = pos['size'] * current_price/self.leverage  # 计算当前持仓市值
                 total_balance += position_value
         
         # 计算盈亏比 ROI

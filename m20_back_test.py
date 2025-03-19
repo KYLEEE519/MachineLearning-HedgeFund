@@ -38,7 +38,7 @@ def main():
         initial_balance=10000,
         open_fee_rate=0.0001,   # 开仓费率
         close_fee_rate=0.0001,  # 平仓费率
-        leverage=1,
+        leverage=10,
         position_ratio=0.1,
         maintenance_margin_rate=0.005,
         min_unit=10,
