@@ -8,3 +8,4 @@ scikit-learn
 statsmodels
 pmdarima
 xgboost
+backtrader
