@@ -96,7 +96,8 @@ def build_additional_charts(trade_log):
 
     return charts
 
-def run_backtest_ui(strategy_key, strategy_param_json, days, initial_balance, instId, show_charts):
+def run_backtest_ui(strategy_key, strategy_param_json, days, initial_balance, instId, show_charts,
+                    open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit):
     config = STRATEGY_CONFIGS[strategy_key]
     strategy_class = load_strategy_class(config["class_path"])
     use_strategy_exit = config["use_strategy_exit"]
@@ -110,20 +111,28 @@ def run_backtest_ui(strategy_key, strategy_param_json, days, initial_balance, in
         return "K线数据失败", None, None, [], None
 
     strategy = strategy_class(df=df, **strategy_kwargs)
-    exchange = SimulatedExchange(initial_balance, 0.0001, 0.0001, 1.0, 0.1)
+    exchange = SimulatedExchange(
+        initial_balance=initial_balance,
+        open_fee_rate=open_fee_rate,
+        close_fee_rate=close_fee_rate,
+        leverage=leverage,
+        position_ratio=0.1,
+        maintenance_margin_rate=maintenance_margin_rate,
+        min_unit=min_unit
+    )   
 
     for i in range(strategy.warmup_period, len(df)):
         kline = df.iloc[i]
         if use_strategy_exit:
             current_pos = exchange.positions.get(instId, [{}])
             current_dir = current_pos[0].get("direction", 0) if current_pos else 0
-            raw_signal = strategy.generate_signal(i, exchange.balance, 1.0, current_dir)
+            raw_signal = strategy.generate_signal(i, exchange.balance, exchange.leverage, current_dir)
             exchange.process_closing(instId, kline, raw_signal)
             current_pos = exchange.positions.get(instId, [{}])
             current_dir = current_pos[0].get("direction", 0) if current_pos else 0
-            new_signal = strategy.generate_signal(i, exchange.balance, 1.0, current_dir)
+            new_signal = strategy.generate_signal(i, exchange.balance, exchange.leverage, 0)
         else:
-            new_signal = strategy.generate_signal(i, exchange.balance, 1.0, 0)
+            new_signal = strategy.generate_signal(i, exchange.balance, exchange.leverage, 0)
             new_signal = new_signal[:4] + (False,)
             exchange.process_closing(instId, kline, new_signal)
         exchange.process_opening(instId, kline, new_signal)
@@ -169,6 +178,12 @@ with gr.Blocks(title="策略回测平台") as demo:
         strategy_choice = gr.Dropdown(choices=strategy_keys, value=default_key, label="选择策略")
         days = gr.Slider(1, 30, value=10, step=1, label="回测天数")
         initial_balance = gr.Slider(1000, 20000, value=10000, step=500, label="初始资金")
+        open_fee_rate = gr.Slider(0, 0.01, value=0.0001, step=0.0001, label="开仓手续费率")
+        close_fee_rate = gr.Slider(0, 0.01, value=0.0001, step=0.0001, label="平仓手续费率")
+        leverage = gr.Slider(1, 20, value=1.0, step=0.5, label="杠杆倍数")
+        maintenance_margin_rate = gr.Slider(0, 0.1, value=0.005, step=0.001, label="维持保证金率")
+        min_unit = gr.Number(value=10, label="最小下单单位")
+
         instId = gr.Textbox(label="币种 (如 BTC-USDT)", value="BTC-USDT")
     json_editor = gr.Code(label="策略参数 JSON", language="json", value=default_json)
     show_charts = gr.Checkbox(label="显示所有图表分析", value=True)
@@ -183,9 +198,12 @@ with gr.Blocks(title="策略回测平台") as demo:
         cfg = STRATEGY_CONFIGS[strategy_key]
         return json.dumps(cfg["default_params"], indent=2)
 
-    def run_and_return(strategy_key, strategy_param_json, days, initial_balance, instId, show_charts):
+    def run_and_return(strategy_key, strategy_param_json, days, initial_balance, instId, show_charts,
+                   open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit):
+
         summary, main_fig, trades, other_figs, df = run_backtest_ui(
-            strategy_key, strategy_param_json, days, initial_balance, instId, show_charts
+            strategy_key, strategy_param_json, days, initial_balance, instId, show_charts,
+            open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit
         )
 
         # 如果少于 10 张图，补 None
@@ -203,7 +221,12 @@ with gr.Blocks(title="策略回测平台") as demo:
 
 
     strategy_choice.change(fn=update_json, inputs=strategy_choice, outputs=json_editor)
-    btn.click(fn=run_and_return, inputs=[strategy_choice, json_editor, days, initial_balance, instId, show_charts], outputs=[output_summary, output_plot] + chart_boxes + [output_trades])
+    btn.click(
+        fn=run_and_return,
+        inputs=[strategy_choice, json_editor, days, initial_balance, instId, show_charts,
+                open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit],
+        outputs=[output_summary, output_plot] + chart_boxes + [output_trades]
+    )
 
 if __name__ == "__main__":
     demo.launch()

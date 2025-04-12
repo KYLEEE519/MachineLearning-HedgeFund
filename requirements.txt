@@ -9,3 +9,4 @@ statsmodels
 pmdarima
 xgboost
 backtrader
+gradio
