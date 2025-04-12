@@ -3,27 +3,37 @@ import pandas as pd
 import xgboost as xgb
 import matplotlib.pyplot as plt
 import os
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
 import pickle
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, mean_squared_error
+from okx_fetch_data import fetch_kline_df
 
-def show_data(file):
-    df = pd.read_csv(file.name)
-    return df.head().to_markdown(), ", ".join(df.columns.tolist())
+df_cache = None  # 全局数据缓存
 
-def get_columns(file):
-    df = pd.read_csv(file.name)
-    cols = df.columns.tolist()
+
+def show_data(days, bar, instId):
+    global df_cache
+    df_cache = fetch_kline_df(days=days, bar=bar, instId=instId)
+    if df_cache.empty:
+        return "未获取到数据，请检查参数！", ""
+    return df_cache.head().to_markdown(), ", ".join(df_cache.columns.tolist())
+
+
+def get_columns():
+    global df_cache
+    if df_cache is None or df_cache.empty:
+        return gr.update(choices=[]), gr.update(choices=[])
+    cols = df_cache.columns.tolist()
     return gr.update(choices=cols), gr.update(choices=cols)
 
 
+def train_model(feature_cols, target_col, learning_rate, max_depth, n_estimators, save_path):
+    global df_cache
+    if df_cache is None or df_cache.empty:
+        raise ValueError("未获取到数据，请先点击读取数据")
 
-
-
-# 训练模型
-def train_model(file, feature_cols, target_col, learning_rate, max_depth, n_estimators, save_path):
-    df = pd.read_csv(file.name)
-
+    df = df_cache
     X = df[feature_cols]
     y = df[target_col]
 
@@ -43,24 +53,18 @@ def train_model(file, feature_cols, target_col, learning_rate, max_depth, n_esti
 
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    model.fit(
-        X_train, y_train,
-        eval_set=[(X_val, y_val)],
-        verbose=True
-    )
+    model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=True)
 
     evals_result = model.evals_result() if hasattr(model, 'evals_result') else {}
 
     os.makedirs("result", exist_ok=True)
-
     loss_path = os.path.join("result", "loss.png")
     importance_path = os.path.join("result", "feature_importance.png")
     model_path = os.path.join(save_path, 'xgb_model.pkl')
 
-    # 绘制 loss 曲线
     if evals_result:
         plt.figure()
-        loss_key = list(evals_result['validation_0'].keys())[0]  # 自动找 logloss / rmse
+        loss_key = list(evals_result['validation_0'].keys())[0]
         plt.plot(evals_result['validation_0'][loss_key])
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
@@ -68,19 +72,15 @@ def train_model(file, feature_cols, target_col, learning_rate, max_depth, n_esti
         plt.savefig(loss_path)
         plt.close()
 
-    # 绘制特征重要性
     xgb.plot_importance(model)
     plt.savefig(importance_path)
     plt.close()
 
     if isinstance(model, xgb.XGBClassifier):
         y_pred = model.predict(X_val)
-        from sklearn.metrics import accuracy_score
         acc = accuracy_score(y_val, y_pred)
     else:
         y_pred = model.predict(X_val)
-        from sklearn.metrics import mean_squared_error
-        import numpy as np
         acc = np.sqrt(mean_squared_error(y_val, y_pred))
 
     with open(model_path, 'wb') as f:
@@ -89,28 +89,25 @@ def train_model(file, feature_cols, target_col, learning_rate, max_depth, n_esti
     return loss_path, importance_path, acc, f"模型已保存到: {model_path}"
 
 
-
-
-
+# Gradio UI
 with gr.Blocks() as demo:
-    gr.Markdown("# XGBoost 可视化训练工具")
+    gr.Markdown("# XGBoost 可视化训练工具（仅支持OKX数据获取）")
 
     with gr.Row():
-        file = gr.File(label="上传CSV数据")
-        data_info = gr.Markdown()
-        all_columns = gr.Markdown(label="全部列名")
+        days = gr.Number(label="获取最近几天数据（days）", info="例如7表示最近7天")
+        bar = gr.Textbox(label="K线粒度（bar）", info="例如1m、5m、1H、4H")
+        instId = gr.Textbox(label="交易对（instId）", info="例如BTC-USDT")
 
-    load_button = gr.Button("读取数据")
+    data_info = gr.Markdown()
+    all_columns = gr.Markdown(label="全部列名")
 
-    feature_cols = gr.Dropdown(
-        choices=[], label="选择特征列(可多选)", multiselect=True, allow_custom_value=False
-    )
-    target_col = gr.Dropdown(
-        choices=[], label="选择目标列(单选)", multiselect=False, allow_custom_value=False
-    )
+    load_button = gr.Button("获取并展示数据")
 
-    load_button.click(fn=show_data, inputs=file, outputs=[data_info, all_columns])
-    load_button.click(fn=get_columns, inputs=file, outputs=[feature_cols, target_col])
+    feature_cols = gr.Dropdown(choices=[], label="选择特征列(可多选)", multiselect=True)
+    target_col = gr.Dropdown(choices=[], label="选择目标列(单选)", multiselect=False)
+
+    load_button.click(fn=show_data, inputs=[days, bar, instId], outputs=[data_info, all_columns])
+    load_button.click(fn=get_columns, inputs=[], outputs=[feature_cols, target_col])
 
     gr.Markdown("### 模型参数设置")
     learning_rate = gr.Slider(0.01, 1.0, 0.1, step=0.01, label="学习率")
@@ -122,12 +119,12 @@ with gr.Blocks() as demo:
 
     loss_img = gr.Image(label="Loss曲线")
     importance_img = gr.Image(label="特征重要性")
-    acc = gr.Textbox(label="验证集准确率")
+    acc = gr.Textbox(label="验证集评估指标")
     save_info = gr.Textbox(label="模型保存信息")
 
     train_button.click(
         fn=train_model,
-        inputs=[file, feature_cols, target_col, learning_rate, max_depth, n_estimators, save_path],
+        inputs=[feature_cols, target_col, learning_rate, max_depth, n_estimators, save_path],
         outputs=[loss_img, importance_img, acc, save_info]
     )
 
