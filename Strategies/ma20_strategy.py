@@ -14,6 +14,7 @@ class Ma20Strategy:
         """
         self.df = df.copy()
         self.ma_length = ma_length
+        self.warmup_period = ma_length
         self.position_ratio = position_ratio
         
         # 计算移动平均线
