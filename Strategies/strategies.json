@@ -1,0 +1,24 @@
+{
+    "ma20": {
+      "name": "MA20均线策略",
+      "class_path": "Strategies.ma20_strategy.Ma20Strategy",
+      "use_strategy_exit": true,
+      "default_params": {
+        "ma_length": 20,
+        "position_ratio": 0.5
+      }
+    },
+    "dualma": {
+      "name": "双均线+止盈止损策略",
+      "class_path": "Strategies.DualMaStrategy.DualMaStrategy",
+      "use_strategy_exit": false,
+      "default_params": {
+        "fast_ma": 5,
+        "slow_ma": 30,
+        "position_ratio": 0.7,
+        "tp_rate": 0.03,
+        "sl_rate": 0.015
+      }
+    }
+  }
+  
