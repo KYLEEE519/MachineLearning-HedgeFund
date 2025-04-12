@@ -1,6 +1,6 @@
 import pandas as pd
 import datetime
-
+import time
 # 1) 从 OKX 接口获取数据的函数
 from Data.okx_fetch_data import fetch_kline_df
 
@@ -20,14 +20,15 @@ def get_current_position(exchange, symbol):
 
 def main():
     # ========== A. 从OKX接口获取最近 14 天的 5分钟K线，BTC-USDT为例 ==========
-    days = 300
+    days = 90
     bar = "5m"
     instId = "BTC-USDT"
+    time1=time.time()
     df = fetch_kline_df(days=days, bar=bar, instId=instId, flag="0")  # "0"实盘
     if df.empty:
         print("获取K线数据为空，无法继续回测")
         return
-    
+    print(time.time()-time1)
     # print("获取到的K线数据最后5行:")
     # print(df.head(5))
     
@@ -47,7 +48,7 @@ def main():
 
     # 定义发数据机器人参数
     n = 20  # 例如每次获取最近20条K线
-    
+    time2=time.time()
     # ========== C. 回测循环 ==========
     for i in range(strategy.ma_length, len(df)):
         current_kline = df.iloc[i]
@@ -86,7 +87,7 @@ def main():
         # 6) 处理开仓
         exchange.process_opening(symbol="BTC-USDT", kline=current_kline, signal=new_signal)
         # print('time',i, exchange.balance)
-
+    print(time.time()-time2)
     # ========== D. 输出回测结果 ==========
     print("\n--- 回测结果汇总 ---")
     print("最终账户余额:", exchange.balance)
