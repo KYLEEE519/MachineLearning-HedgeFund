@@ -230,6 +230,31 @@ def validate_data(df, feature_cols, target_col):
 
     return True, "数据检查通过"
 
+# 检查数据合法性函数
+def check_data_validity(feature_cols, target_col):
+    global df_csv
+    if df_csv is None or df_csv.empty:
+        return "❌ 未加载数据，请先读取 CSV 文件"
+
+    df = df_csv
+
+    if target_col not in df.columns:
+        return f"❌ 目标列 {target_col} 不存在，请检查！"
+
+    if not all([col in df.columns for col in feature_cols]):
+        return f"❌ 部分特征列不存在，请检查！"
+
+    if df[feature_cols].select_dtypes(include=["number"]).shape[1] != len(feature_cols):
+        return "❌ 存在非数值型特征列，XGBoost 仅支持数值特征！"
+
+    if df[target_col].nunique() < 2:
+        return "❌ 目标列类别数不足，请检查！"
+
+    if df[target_col].nunique() > 10:
+        return "❌ 目标列类别数过多，请检查！"
+
+    return "✅ 数据检查通过！"
+
 
 from sklearn.metrics import accuracy_score, mean_squared_error, roc_auc_score, roc_curve, precision_score, recall_score, f1_score
 
@@ -241,17 +266,7 @@ def train_model(feature_cols, target_col,
         raise ValueError("未加载数据，请先读取 CSV 文件")
 
     df = df_csv
-
-    # 检查数据合法性
-    if target_col not in df.columns:
-        return "", "", "", "目标列不存在，请检查！"
-    if not all([col in df.columns for col in feature_cols]):
-        return "", "", "", "部分特征列不存在，请检查！"
-    if df[feature_cols].select_dtypes(include=["number"]).shape[1] != len(feature_cols):
-        return "", "", "", "存在非数值型特征列，XGBoost 仅支持数值特征！"
-    if df[target_col].nunique() < 2:
-        return "", "", "", "目标列类别数不足，请检查！"
-
+    
     X = df[feature_cols]
     y = df[target_col]
 
@@ -366,15 +381,6 @@ def hyperparameter_search(feature_cols, target_col, n_iter,
 
     df = df_csv
 
-    # 数据检查
-    if target_col not in df.columns:
-        return "目标列不存在，请检查！"
-    if not all([col in df.columns for col in feature_cols]):
-        return "部分特征列不存在，请检查！"
-    if df[feature_cols].select_dtypes(include=["number"]).shape[1] != len(feature_cols):
-        return "存在非数值型特征列，XGBoost 仅支持数值特征！"
-    if df[target_col].nunique() < 2:
-        return "目标列类别数不足，请检查！"
 
     X = df[feature_cols]
     y = df[target_col]
@@ -543,6 +549,16 @@ with gr.Blocks() as demo:
 
         load_csv_button.click(fn=load_csv, inputs=[csv_path], outputs=[data_info, all_columns])
         load_csv_button.click(fn=get_columns, inputs=[], outputs=[feature_cols, target_col])
+        gr.Markdown("## 数据检查")
+
+        check_info = gr.Markdown()  # 显示检查结果
+        check_button = gr.Button("检查数据合法性")
+
+        check_button.click(
+            fn=check_data_validity,
+            inputs=[feature_cols, target_col],
+            outputs=[check_info]
+        )
         with gr.Tab("模型训练"):
             gr.Markdown("### 模型参数设置")
 
