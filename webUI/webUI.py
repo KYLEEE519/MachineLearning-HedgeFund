@@ -456,52 +456,55 @@ with gr.Blocks() as demo:
         load_button.click(fn=show_data, inputs=[days, bar, instId], outputs=[data_info, all_columns])
         
         # ----- 单指标生成 -----
-        gr.Markdown("## 单指标生成")
-        indicator_name = gr.Dropdown(choices=list(indicator_registry.keys()), label="选择指标")
-        column = gr.Textbox(label="作用列", value="close")
-        confirm_param_button = gr.Button("确认生成参数输入框")
-        json_params = gr.Textbox(label="请在此输入指标参数（JSON 格式）", visible=False, lines=10)
-        # Markdown 组件，用于显示参数说明（instruction）
-        param_instructions = gr.Markdown(label="参数说明")
-        confirm_param_button.click(
-            fn=update_param_inputs_json,
-            inputs=[indicator_name],
-            outputs=[json_params, param_instructions]
-        )
-        new_col_name = gr.Textbox(label="新列名（可选）")
-        add_indicator_button = gr.Button("生成指标")
-        add_indicator_button.click(
-            fn=add_indicator_json,
-            inputs=[indicator_name, column, new_col_name, json_params],
-            outputs=[data_info, all_columns]
-        )
+        with gr.Tab("单指标生成"):
+            gr.Markdown("## 单指标生成")
+            indicator_name = gr.Dropdown(choices=list(indicator_registry.keys()), label="选择指标")
+            column = gr.Textbox(label="作用列", value="close")
+            confirm_param_button = gr.Button("确认生成参数输入框")
+            json_params = gr.Textbox(label="请在此输入指标参数（JSON 格式）", visible=False, lines=10)
+            # Markdown 组件，用于显示参数说明（instruction）
+            param_instructions = gr.Markdown(label="参数说明")
+            confirm_param_button.click(
+                fn=update_param_inputs_json,
+                inputs=[indicator_name],
+                outputs=[json_params, param_instructions]
+            )
+            new_col_name = gr.Textbox(label="新列名（可选）")
+            add_indicator_button = gr.Button("生成指标")
+            add_indicator_button.click(
+                fn=add_indicator_json,
+                inputs=[indicator_name, column, new_col_name, json_params],
+                outputs=[data_info, all_columns]
+            )
         
         # ----- 批量生成特征 -----
-        gr.Markdown("## 编辑 JSON 自动批量生成特征")
-        json_editor = gr.Code(
-            label="指标配置 JSON", language="json",
-            value='''{
-        "RSI": {"enable": true, "params": {"window": 14}},
-        "MACD": {"enable": true, "params": {"window_fast": 12, "window_slow": 26, "window_sign": 9}},
-        "BOLL": {"enable": false, "params": {"window": 20, "std": 2.0}},
-        "EMA": {"enable": false, "params": {"window": 14}},
-        "SMA": {"enable": false, "params": {"window": 14}},
-        "ATR": {"enable": false, "params": {"window": 14}},
-        "CCI": {"enable": false, "params": {"window": 14}},
-        "Stoch": {"enable": false, "params": {"window": 14}},
-        "WILLR": {"enable": false, "params": {"window": 14}},
-        "ROC": {"enable": false, "params": {"window": 14}}
-    }'''
-        )
-        new_data_info = gr.Markdown()
-        new_all_columns = gr.Markdown(label="最新全部列名")
-        generate_button = gr.Button("批量生成特征")
-        generate_button.click(
-            fn=generate_features_by_json,
-            inputs=[json_editor],
-            outputs=[new_data_info, new_all_columns]
-        )
-        
+        with gr.Tab("批量生成指标"):
+            gr.Markdown("## 编辑 JSON 自动批量生成特征")
+            json_editor = gr.Code(
+                label="指标配置 JSON", language="json",
+                value='''{
+            "RSI": {"enable": true, "params": {"window": 14}},
+            "MACD": {"enable": true, "params": {"window_fast": 12, "window_slow": 26, "window_sign": 9}},
+            "BOLL": {"enable": false, "params": {"window": 20, "std": 2.0}},
+            "EMA": {"enable": false, "params": {"window": 14}},
+            "SMA": {"enable": false, "params": {"window": 14}},
+            "ATR": {"enable": false, "params": {"window": 14}},
+            "CCI": {"enable": false, "params": {"window": 14}},
+            "Stoch": {"enable": false, "params": {"window": 14}},
+            "WILLR": {"enable": false, "params": {"window": 14}},
+            "ROC": {"enable": false, "params": {"window": 14}}
+            }'''
+            )
+            new_data_info = gr.Markdown()
+            new_all_columns = gr.Markdown(label="最新全部列名")
+            generate_button = gr.Button("批量生成特征")
+            generate_button.click(
+                fn=generate_features_by_json,
+                inputs=[json_editor],
+                outputs=[new_data_info, new_all_columns]
+            )
+        with gr.Tab("自定义指标"):
+            gr.Markdown("## 自定义指标")
         # ----- 生成 Target 列 -----
         gr.Markdown("## 选择 Target 列")
         target_type = gr.Dropdown(choices=["涨跌（1为涨，0为跌）", "涨跌幅"], label="选择 Target 类型")
