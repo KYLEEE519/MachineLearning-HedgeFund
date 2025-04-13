@@ -429,6 +429,12 @@ def hyperparameter_search(feature_cols, target_col, n_iter,
 # =====================================
 # 8. 构建 Gradio UI
 # =====================================
+
+from timexer import train_timexer_model
+from PIL import Image
+import pandas as pd
+
+
 with gr.Blocks() as demo:
     with gr.Tab("数据处理与特征工程"):
         gr.Markdown("# XGBoost 可视化训练工具（完整功能版）")
@@ -629,6 +635,65 @@ with gr.Blocks() as demo:
                 outputs=[search_result]
             )
 
+    with gr.Tab("TimeXer 模型训练"):
+        gr.Markdown("# TimeXer 模型 - 基于 Transformer 的涨跌预测")
+
+        # ===== CSV 数据输入 =====
+        timexer_csv_path = gr.Textbox(label="输入 CSV 文件路径（含所有特征+target）")
+        timexer_load_btn = gr.Button("加载数据")
+
+        timexer_data_preview = gr.Markdown(label="预览数据")
+
+        def load_csv_for_timexer(path):
+            if not os.path.exists(path):
+                return "路径不存在，请检查！", None
+            df = pd.read_csv(path)
+            return df.head().to_markdown(), df
+
+        timexer_df_state = gr.State()
+        timexer_load_btn.click(fn=load_csv_for_timexer, inputs=[timexer_csv_path],
+                            outputs=[timexer_data_preview, timexer_df_state])
+
+        # ===== 参数设置区 =====
+        gr.Markdown("## 模型参数设置")
+        with gr.Row():
+            lookback = gr.Slider(16, 128, value=64, step=8, label="LOOKBACK 序列长度")
+            patch_size = gr.Slider(4, 32, value=8, step=4, label="PATCH_SIZE")
+            d_model = gr.Slider(32, 256, value=128, step=32, label="d_model (Transformer hidden dim)")
+        with gr.Row():
+            n_heads = gr.Slider(1, 8, value=4, step=1, label="多头注意力头数")
+            n_layers = gr.Slider(1, 6, value=2, step=1, label="Transformer 层数")
+        with gr.Row():
+            epochs = gr.Slider(1, 50, value=10, step=1, label="训练轮数 (Epochs)")
+            batch_size = gr.Slider(16, 256, value=64, step=16, label="Batch Size")
+            lr = gr.Slider(1e-5, 1e-2, value=1e-3, step=1e-5, label="学习率")
+
+        # ===== 训练与可视化输出 =====
+        train_timexer_btn = gr.Button("开始训练 TimeXer 模型")
+
+        loss_img = gr.Image(label="Loss 曲线")
+        acc_img = gr.Image(label="Accuracy 曲线")
+        cm_img = gr.Image(label="混淆矩阵")
+        metric_info = gr.Textbox(label="最终指标 (Acc / Prec / Rec)")
+
+        def run_timexer(df, lookback, patch_size, epochs, batch_size, lr, d_model, n_heads, n_layers):
+            if df is None or not isinstance(df, pd.DataFrame):
+                return None, None, None, "请先加载合法的 CSV 数据"
+            return train_timexer_model(df,
+                                    lookback=int(lookback),
+                                    patch_size=int(patch_size),
+                                    epochs=int(epochs),
+                                    batch_size=int(batch_size),
+                                    lr=float(lr),
+                                    d_model=int(d_model),
+                                    n_heads=int(n_heads),
+                                    n_layers=int(n_layers))
+
+        train_timexer_btn.click(
+            fn=run_timexer,
+            inputs=[timexer_df_state, lookback, patch_size, epochs, batch_size, lr, d_model, n_heads, n_layers],
+            outputs=[loss_img, acc_img, cm_img, metric_info]
+        )
 
 
 
