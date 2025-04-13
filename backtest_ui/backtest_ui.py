@@ -100,7 +100,8 @@ def build_additional_charts(trade_log):
 
 def run_backtest_ui(strategy_key, strategy_param_json, days, bar, initial_balance, instId, show_charts,
                     open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit):
-    config = STRATEGY_CONFIGS[strategy_key]
+    with open("Strategies/strategies.json", "r", encoding="utf-8") as f:
+        config = json.load(f)[strategy_key]
     strategy_class = load_strategy_class(config["class_path"])
     use_strategy_exit = config["use_strategy_exit"]
     try:
@@ -170,16 +171,21 @@ ROI: {roi:.2f}%
     return summary, fig, trade_df, [fig2] + extra_charts, trade_df
 
 def create_backtest_ui():
-    strategy_keys = list(STRATEGY_CONFIGS.keys())
-    default_key = strategy_keys[0]
-    default_config = STRATEGY_CONFIGS[default_key]
-    default_json = json.dumps(default_config["default_params"], indent=2)
+    def load_strategy_configs():
+        with open("Strategies/strategies.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def get_strategy_dropdown_items():
+        return list(load_strategy_configs().keys())
 
     with gr.Blocks() as demo:
         gr.Markdown("## 📈 多策略支持的回测器")
 
         with gr.Row():
-            strategy_choice = gr.Dropdown(choices=strategy_keys, value=default_key, label="选择策略")
+            strategy_choice = gr.Dropdown(choices=get_strategy_dropdown_items(), label="选择策略")
+            refresh_btn = gr.Button("🔄 刷新策略列表")
+        
+        with gr.Row():
             days = gr.Slider(1, 30, value=10, step=1, label="回测天数")
             bar = gr.Dropdown(choices=["1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d"], value="5m", label="K线周期")
             initial_balance = gr.Slider(1000, 20000, value=10000, step=500, label="初始资金")
@@ -192,7 +198,7 @@ def create_backtest_ui():
             min_unit = gr.Number(value=10, label="最小下单单位")
 
         instId = gr.Textbox(label="币种 (如 BTC-USDT)", value="BTC-USDT")
-        json_editor = gr.Code(label="策略参数 JSON", language="json", value=default_json)
+        json_editor = gr.Code(label="策略参数 JSON", language="json", value="{}")
         show_charts = gr.Checkbox(label="显示所有图表分析", value=True)
 
         btn = gr.Button("开始回测")
@@ -202,12 +208,18 @@ def create_backtest_ui():
         output_trades = gr.Dataframe(label="交易日志")
 
         def update_json(strategy_key):
-            cfg = STRATEGY_CONFIGS[strategy_key]
+            cfg = load_strategy_configs()[strategy_key]
             return json.dumps(cfg["default_params"], indent=2)
+
+        def refresh_strategy_dropdown():
+            items = get_strategy_dropdown_items()
+            first_key = items[0] if items else ""
+            new_json = update_json(first_key) if first_key else ""
+            return gr.update(choices=items, value=first_key), new_json
 
         def run_and_return(strategy_key, strategy_param_json, days, bar, initial_balance, instId, show_charts,
                            open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit):
-
+            cfgs = load_strategy_configs()
             summary, main_fig, trades, other_figs, df = run_backtest_ui(
                 strategy_key, strategy_param_json, days, bar, initial_balance, instId, show_charts,
                 open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit
@@ -218,8 +230,13 @@ def create_backtest_ui():
 
             return [summary, main_fig] + updated_figs + [df]
 
+        # 动态更新 JSON
         strategy_choice.change(fn=update_json, inputs=strategy_choice, outputs=json_editor)
 
+        # 刷新按钮绑定更新策略下拉框和参数
+        refresh_btn.click(fn=refresh_strategy_dropdown, inputs=[], outputs=[strategy_choice, json_editor])
+
+        # 运行回测
         btn.click(
             fn=run_and_return,
             inputs=[strategy_choice, json_editor, days, bar, initial_balance, instId, show_charts,
