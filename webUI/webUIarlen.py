@@ -565,9 +565,9 @@ with gr.Blocks() as demo:
                 inputs=[user_code],
                 outputs=[error_display, df_tail_preview, df_column_list]
             )
-            
+
         gr.Markdown("## 选择 Target 列")
-        target_type = gr.Dropdown(choices=["涨跌（1为涨，0为跌）", "涨跌幅"], label="选择 Target 类型")
+        target_type = gr.Dropdown(choices=["涨跌（1为涨，0为跌）"], label="选择 Target 类型")
         target_data_info = gr.Markdown()
         target_all_columns = gr.Markdown(label="最新全部列名")
         generate_target_button = gr.Button("生成 Target 列")
