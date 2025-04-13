@@ -96,7 +96,7 @@ def build_additional_charts(trade_log):
 
     return charts
 
-def run_backtest_ui(strategy_key, strategy_param_json, days, initial_balance, instId, show_charts,
+def run_backtest_ui(strategy_key, strategy_param_json, days, bar, initial_balance, instId, show_charts,
                     open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit):
     config = STRATEGY_CONFIGS[strategy_key]
     strategy_class = load_strategy_class(config["class_path"])
@@ -106,7 +106,7 @@ def run_backtest_ui(strategy_key, strategy_param_json, days, initial_balance, in
     except json.JSONDecodeError:
         return "参数 JSON 格式错误", None, None, [], None
 
-    df = fetch_kline_df(days=days, bar="5m", instId=instId)
+    df = fetch_kline_df(days=days, bar=bar, instId=instId)
     if df.empty:
         return "K线数据失败", None, None, [], None
 
@@ -177,6 +177,12 @@ with gr.Blocks(title="策略回测平台") as demo:
     with gr.Row():
         strategy_choice = gr.Dropdown(choices=strategy_keys, value=default_key, label="选择策略")
         days = gr.Slider(1, 30, value=10, step=1, label="回测天数")
+        bar = gr.Dropdown(
+            choices=["1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d"],
+            value="5m",
+            label="K线周期"
+        )
+
         initial_balance = gr.Slider(1000, 20000, value=10000, step=500, label="初始资金")
         open_fee_rate = gr.Slider(0, 0.01, value=0.0001, step=0.0001, label="开仓手续费率")
         close_fee_rate = gr.Slider(0, 0.01, value=0.0001, step=0.0001, label="平仓手续费率")
@@ -198,11 +204,11 @@ with gr.Blocks(title="策略回测平台") as demo:
         cfg = STRATEGY_CONFIGS[strategy_key]
         return json.dumps(cfg["default_params"], indent=2)
 
-    def run_and_return(strategy_key, strategy_param_json, days, initial_balance, instId, show_charts,
+    def run_and_return(strategy_key, strategy_param_json, days, bar,initial_balance, instId, show_charts,
                    open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit):
 
         summary, main_fig, trades, other_figs, df = run_backtest_ui(
-            strategy_key, strategy_param_json, days, initial_balance, instId, show_charts,
+            strategy_key, strategy_param_json, days,  bar,initial_balance, instId, show_charts,
             open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit
         )
 
@@ -223,7 +229,7 @@ with gr.Blocks(title="策略回测平台") as demo:
     strategy_choice.change(fn=update_json, inputs=strategy_choice, outputs=json_editor)
     btn.click(
         fn=run_and_return,
-        inputs=[strategy_choice, json_editor, days, initial_balance, instId, show_charts,
+        inputs=[strategy_choice, json_editor, days,bar, initial_balance, instId, show_charts,
                 open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit],
         outputs=[output_summary, output_plot] + chart_boxes + [output_trades]
     )
