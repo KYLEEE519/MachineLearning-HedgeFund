@@ -3,9 +3,6 @@ import os
 from okx_fetch_data import fetch_kline_df
 from datetime import datetime
 
-df_cache = None  # 临时数据缓存
-df_csv = None    # 读取的CSV数据
-
 def show_data(days, bar, instId):
     global df_cache
     df_cache = fetch_kline_df(days=days, bar=bar, instId=instId)
