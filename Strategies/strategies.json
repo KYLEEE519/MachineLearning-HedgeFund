@@ -28,5 +28,27 @@
       "rsi_period": 14,
       "position_ratio": 0.5
     }
+  },
+  "BollingerBandsStrategy": {
+    "name": "BollingerBandsStrategy",
+    "class_path": "Strategies.BollingerBandsStrategy.BollingerBandsStrategy",
+    "use_strategy_exit": false,
+    "default_params": {
+      "period": 20,
+      "std_dev": 2.0,
+      "position_ratio": 1.0,
+      "tp_rate": 0.02,
+      "sl_rate": 0.01
+    }
+  },
+  "MeanReversionStrategy": {
+    "name": "MeanReversionStrategy",
+    "class_path": "Strategies.MeanReversionStrategy.MeanReversionStrategy",
+    "use_strategy_exit": true,
+    "default_params": {
+      "ma_short": 10,
+      "ma_long": 20,
+      "position_ratio": 0.6
+    }
   }
 }
