@@ -460,6 +460,7 @@ def build_model_train_ui():
         timexer_load_btn.click(fn=load_csv_for_timexer, inputs=[timexer_csv_path],
                             outputs=[timexer_data_preview, timexer_df_state])
 
+        # ===== 模型参数设置 =====
         with gr.Tab("模型参数设置"):
             gr.Markdown("## 模型参数设置")
             with gr.Row():
@@ -469,6 +470,7 @@ def build_model_train_ui():
             with gr.Row():
                 n_heads = gr.Slider(1, 8, value=4, step=1, label="多头注意力头数")
                 n_layers = gr.Slider(1, 6, value=2, step=1, label="Transformer 层数")
+                dropout = gr.Slider(0.0, 0.5, value=0.2, step=0.05, label="Dropout 比例")
             with gr.Row():
                 epochs = gr.Slider(1, 50, value=10, step=1, label="训练轮数 (Epochs)")
                 batch_size = gr.Slider(16, 256, value=64, step=16, label="Batch Size")
@@ -482,7 +484,7 @@ def build_model_train_ui():
             metric_info = gr.Textbox(label="最终指标 (Acc / Prec / Rec)")
             model_save_info = gr.Textbox(label="模型保存路径")
 
-            def run_timexer(df, lookback, patch_size, epochs, batch_size, lr, d_model, n_heads, n_layers):
+            def run_timexer(df, lookback, patch_size, epochs, batch_size, lr, d_model, n_heads, n_layers, dropout):
                 if df is None or not isinstance(df, pd.DataFrame):
                     return None, None, None, "请先加载合法的 CSV 数据", ""
                 return train_timexer_model(df,
@@ -493,24 +495,29 @@ def build_model_train_ui():
                                         lr=float(lr),
                                         d_model=int(d_model),
                                         n_heads=int(n_heads),
-                                        n_layers=int(n_layers))
+                                        n_layers=int(n_layers),
+                                        dropout=float(dropout))
 
             train_timexer_btn.click(
                 fn=run_timexer,
-                inputs=[timexer_df_state, lookback, patch_size, epochs, batch_size, lr, d_model, n_heads, n_layers],
+                inputs=[timexer_df_state, lookback, patch_size, epochs, batch_size, lr, d_model, n_heads, n_layers, dropout],
                 outputs=[loss_img, acc_img, cm_img, metric_info, model_save_info]
             )
 
+        # ===== 超参数搜索 =====
         with gr.Tab("超参数搜索"):
             gr.Markdown("## 超参数搜索（Random Search）")
 
             n_trials = gr.Slider(1, 50, value=10, step=1, label="搜索次数（n_trials）")
-            lookback_slider = gr.Slider(32, 128, value=64, step=32, label="LOOKBACK 候选值")
-            patch_slider = gr.Slider(4, 16, value=8, step=4, label="PATCH_SIZE 候选值")
-            d_model_slider = gr.Slider(64, 256, value=128, step=64, label="d_model 候选值")
-            heads_slider = gr.Slider(2, 6, value=4, step=2, label="n_heads 候选值")
-            layers_slider = gr.Slider(1, 3, value=2, step=1, label="n_layers 候选值")
-            batch_slider = gr.Slider(32, 128, value=64, step=32, label="batch_size 候选值")
+
+            lookback_list = gr.Textbox(label="LOOKBACK 候选列表", value="[32, 64, 96, 128]")
+            patch_list = gr.Textbox(label="PATCH_SIZE 候选列表", value="[4, 8, 12, 16]")
+            d_model_list = gr.Textbox(label="d_model 候选列表", value="[64, 128, 256]")
+            heads_list = gr.Textbox(label="n_heads 候选列表", value="[2, 4, 6]")
+            layers_list = gr.Textbox(label="n_layers 候选列表", value="[1, 2, 3]")
+            batch_list = gr.Textbox(label="batch_size 候选列表", value="[32, 64, 128]")
+            dropout_list = gr.Textbox(label="dropout 候选列表", value="[0.1, 0.2, 0.3]")
+
             lr_min = gr.Number(label="学习率最小值", value=1e-4)
             lr_max = gr.Number(label="学习率最大值", value=1e-2)
 
@@ -518,33 +525,38 @@ def build_model_train_ui():
             search_output = gr.Textbox(label="搜索结果（最佳参数+得分）")
 
             def run_timexer_search(df, n_trials,
-                                lookback_slider, patch_slider, d_model_slider,
-                                heads_slider, layers_slider, batch_slider,
+                                lookback_list, patch_list, d_model_list,
+                                heads_list, layers_list, batch_list, dropout_list,
                                 lr_min, lr_max):
                 if df is None or not isinstance(df, pd.DataFrame):
                     return "❌ 请先加载合法 CSV 数据"
                 from timexer import random_search_timexer
                 import numpy as np
 
-                param_grid = {
-                    "lookback": [int(lookback_slider)],
-                    "patch_size": [int(patch_slider)],
-                    "d_model": [int(d_model_slider)],
-                    "n_heads": [int(heads_slider)],
-                    "n_layers": [int(layers_slider)],
-                    "batch_size": [int(batch_slider)],
-                    "lr": list(np.linspace(float(lr_min), float(lr_max), num=5))
-                }
+                try:
+                    param_grid = {
+                        "lookback": json.loads(lookback_list),
+                        "patch_size": json.loads(patch_list),
+                        "d_model": json.loads(d_model_list),
+                        "n_heads": json.loads(heads_list),
+                        "n_layers": json.loads(layers_list),
+                        "batch_size": json.loads(batch_list),
+                        "dropout": json.loads(dropout_list),
+                        "lr": list(np.linspace(float(lr_min), float(lr_max), num=5))
+                    }
+                except Exception as e:
+                    return f"❌ JSON 解析失败: {e}"
 
                 best_params, best_score = random_search_timexer(df, param_grid, int(n_trials))
-                return f"最佳得分: {best_score:.4f}\n最佳参数:\n{json.dumps(best_params, indent=2)}"
+                return f"✅ 最佳得分: {best_score:.4f}\n\n最佳参数:\n{json.dumps(best_params, indent=2)}"
 
             search_btn.click(
                 fn=run_timexer_search,
-                inputs=[timexer_df_state, n_trials,
-                        lookback_slider, patch_slider, d_model_slider,
-                        heads_slider, layers_slider, batch_slider,
-                        lr_min, lr_max],
+                inputs=[
+                    timexer_df_state, n_trials,
+                    lookback_list, patch_list, d_model_list,
+                    heads_list, layers_list, batch_list, dropout_list,
+                    lr_min, lr_max
+                ],
                 outputs=[search_output]
             )
-
