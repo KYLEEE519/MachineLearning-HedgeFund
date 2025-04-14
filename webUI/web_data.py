@@ -35,7 +35,7 @@ def update_param_inputs_json(indicator_name):
 # =====================================
 # 3. 单指标生成 —— 解析 JSON 参数并生成指标
 # =====================================
-def add_indicator_json(indicator_name, column, new_col_name, param_json_str):
+def add_indicator_json(indicator_name, column, param_json_str):
     global df_cache
     if df_cache is None:
         return "请先获取数据！", ""
@@ -58,8 +58,8 @@ def add_indicator_json(indicator_name, column, new_col_name, param_json_str):
             kwargs[name] = float(value) if value else 0.0
 
     df_cache = func(df_cache, **kwargs)
-    if new_col_name:
-        df_cache.rename(columns={df_cache.columns[-1]: new_col_name}, inplace=True)
+    # if new_col_name:
+    #     df_cache.rename(columns={df_cache.columns[-1]: new_col_name}, inplace=True)
     return df_cache.head().to_markdown(), ", ".join(df_cache.columns.tolist())
 
 # =====================================
@@ -268,11 +268,11 @@ def build_data_process_ui():
                 inputs=[indicator_name],
                 outputs=[json_params, param_instructions]
             )
-            new_col_name = gr.Textbox(label="新列名（可选）")
+            # new_col_name = gr.Textbox(label="新列名（可选）")
             add_indicator_button = gr.Button("生成指标")
             add_indicator_button.click(
                 fn=add_indicator_json,
-                inputs=[indicator_name, column, new_col_name, json_params],
+                inputs=[indicator_name, column, json_params],
                 outputs=[data_info, all_columns]
             )
         
