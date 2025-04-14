@@ -49,11 +49,14 @@ def format_positions(positions):
 
 def build_additional_charts(trade_log):
     df = pd.DataFrame(trade_log)
+    print("🔍 所有日志字段：", df.columns.tolist())
     charts = []
     if df.empty:
         return charts
 
     df_close = df[df['action'] == 'close'].copy()
+    print("✅ 关闭日志数量：", len(df_close))
+    print("✅ 关闭日志字段：", df_close.columns.tolist())
     df_close['timestamp'] = pd.to_datetime(df_close['timestamp'])
     df_close['open_timestamp'] = pd.to_datetime(df_close['open_timestamp'])
 
@@ -99,7 +102,7 @@ def build_additional_charts(trade_log):
     return charts
 
 def run_backtest_ui(strategy_key, strategy_param_json, days, bar, initial_balance, instId, show_charts,
-                    open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit):
+                    open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit, allow_multiple_positions):
     with open("Strategies/strategies.json", "r", encoding="utf-8") as f:
         config = json.load(f)[strategy_key]
     strategy_class = load_strategy_class(config["class_path"])
@@ -121,24 +124,20 @@ def run_backtest_ui(strategy_key, strategy_param_json, days, bar, initial_balanc
         leverage=leverage,
         position_ratio=0.1,
         maintenance_margin_rate=maintenance_margin_rate,
-        min_unit=min_unit
+        min_unit=min_unit,
+        allow_multiple_positions=allow_multiple_positions
     )   
 
     for i in range(strategy.warmup_period, len(df)):
         kline = df.iloc[i]
-        if use_strategy_exit:
-            current_pos = exchange.positions.get(instId, [{}])
-            current_dir = current_pos[0].get("direction", 0) if current_pos else 0
-            raw_signal = strategy.generate_signal(i, exchange.balance, exchange.leverage, current_dir)
-            exchange.process_closing(instId, kline, raw_signal)
-            current_pos = exchange.positions.get(instId, [{}])
-            current_dir = current_pos[0].get("direction", 0) if current_pos else 0
-            new_signal = strategy.generate_signal(i, exchange.balance, exchange.leverage, 0)
-        else:
-            new_signal = strategy.generate_signal(i, exchange.balance, exchange.leverage, 0)
-            new_signal = new_signal[:4] + (False,)
-            exchange.process_closing(instId, kline, new_signal)
-        exchange.process_opening(instId, kline, new_signal)
+        # ✅ 简化为统一支持完整 signal
+        current_pos = exchange.positions.get(instId, [])
+        current_dir = current_pos[0]["direction"] if current_pos else 0
+
+
+        signal = strategy.generate_signal(i, exchange.balance, exchange.leverage, current_dir)
+        exchange.process_closing(instId, kline, signal)
+        exchange.process_opening(instId, kline, signal)
 
     final_price = df.iloc[-1]["close"]
     total_balance, roi, total_trades = exchange.calculate_total_balance_and_roi(final_price)
@@ -200,7 +199,7 @@ def create_backtest_ui():
         instId = gr.Textbox(label="币种 (如 BTC-USDT)", value="BTC-USDT")
         json_editor = gr.Code(label="策略参数 JSON", language="json", value="{}")
         show_charts = gr.Checkbox(label="显示所有图表分析", value=True)
-
+        allow_multiple_positions = gr.Checkbox(label="允许多次开仓（加仓）", value=False)
         btn = gr.Button("开始回测")
         output_summary = gr.Textbox(label="回测结果")
         output_plot = gr.Plot(label="价格 + 交易点")
@@ -218,11 +217,11 @@ def create_backtest_ui():
             return gr.update(choices=items, value=first_key), new_json
 
         def run_and_return(strategy_key, strategy_param_json, days, bar, initial_balance, instId, show_charts,
-                           open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit):
+                           open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit, allow_multiple_positions):
             cfgs = load_strategy_configs()
             summary, main_fig, trades, other_figs, df = run_backtest_ui(
                 strategy_key, strategy_param_json, days, bar, initial_balance, instId, show_charts,
-                open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit
+                open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit, allow_multiple_positions=allow_multiple_positions
             )
 
             padded_figs = other_figs[:10] + [None] * (10 - len(other_figs))
@@ -235,13 +234,17 @@ def create_backtest_ui():
 
         # 刷新按钮绑定更新策略下拉框和参数
         refresh_btn.click(fn=refresh_strategy_dropdown, inputs=[], outputs=[strategy_choice, json_editor])
-
+        
         # 运行回测
         btn.click(
             fn=run_and_return,
-            inputs=[strategy_choice, json_editor, days, bar, initial_balance, instId, show_charts,
-                    open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit],
+            inputs=[
+                strategy_choice, json_editor, days, bar, initial_balance, instId, show_charts,
+                open_fee_rate, close_fee_rate, leverage, maintenance_margin_rate, min_unit,
+                allow_multiple_positions
+            ],
             outputs=[output_summary, output_plot] + chart_boxes + [output_trades]
         )
+
 
     return demo

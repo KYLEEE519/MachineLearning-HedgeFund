@@ -8,14 +8,6 @@ class DualMaStrategy:
                  position_ratio: float,
                  tp_rate: float,
                  sl_rate: float):
-        """
-        参数:
-          - fast_ma: 快速均线周期
-          - slow_ma: 慢速均线周期
-          - position_ratio: 开仓所用资金比例
-          - tp_rate: 止盈比例（例如0.02表示+2%）
-          - sl_rate: 止损比例（例如0.01表示-1%）
-        """
         self.df = df.copy()
         self.fast_ma = fast_ma
         self.slow_ma = slow_ma
@@ -26,37 +18,35 @@ class DualMaStrategy:
         self.df["fast_ma"] = self.df["close"].rolling(fast_ma).mean()
         self.df["slow_ma"] = self.df["close"].rolling(slow_ma).mean()
         self.warmup_period = max(fast_ma, slow_ma)
+
     def generate_signal(self, index: int, current_balance: float, leverage: float = 1.0, current_position: int = 0):
         if index < self.slow_ma:
-            return (0, None, None, 0, False)
+            return (0, None, None, 0, 0, 1.0)  # 无信号
 
         row = self.df.iloc[index]
         prev = self.df.iloc[index - 1]
 
-        # 保证均线已生成
         if pd.isna(row["fast_ma"]) or pd.isna(row["slow_ma"]) or pd.isna(prev["fast_ma"]) or pd.isna(prev["slow_ma"]):
-            return (0, None, None, 0, False)
+            return (0, None, None, 0, 0, 1.0)
 
         long_condition = prev["fast_ma"] <= prev["slow_ma"] and row["fast_ma"] > row["slow_ma"]
         short_condition = prev["fast_ma"] >= prev["slow_ma"] and row["fast_ma"] < row["slow_ma"]
 
-        if long_condition:
-            direction = 1
-        elif short_condition:
-            direction = -1
-        else:
-            return (0, None, None, 0, False)
+        # 无信号就什么都不做
+        if not long_condition and not short_condition:
+            return (0, None, None, 0, 0, 1.0)
 
-        # 不允许与当前方向相同的重复开仓
+        direction = 1 if long_condition else -1
+
+        # 如果已有持仓方向相同，则不重复开仓
         if direction == current_position:
-            return (0, None, None, 0, False)
+            return (0, None, None, 0, 0, 1.0)
 
-        # 计算开仓手数
         entry_price = row["close"]
         nominal_value = current_balance * self.position_ratio * leverage
         position_size = nominal_value / entry_price
 
-        # 设置止盈止损价格
+        # 设置止盈止损
         if direction == 1:
             take_profit = entry_price * (1 + self.tp_rate)
             stop_loss = entry_price * (1 - self.sl_rate)
@@ -64,4 +54,4 @@ class DualMaStrategy:
             take_profit = entry_price * (1 - self.tp_rate)
             stop_loss = entry_price * (1 + self.sl_rate)
 
-        return (direction, take_profit, stop_loss, position_size, False)  # ❗ 不使用策略平仓
+        return (direction, take_profit, stop_loss, position_size, 0, 1.0)

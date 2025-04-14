@@ -11,7 +11,7 @@
   "dualma": {
     "name": "双均线+止盈止损策略",
     "class_path": "Strategies.DualMaStrategy.DualMaStrategy",
-    "use_strategy_exit": false,
+    "use_strategy_exit": true,
     "default_params": {
       "fast_ma": 5,
       "slow_ma": 30,
@@ -20,35 +20,14 @@
       "sl_rate": 0.015
     }
   },
-  "RSIBasedStrategy": {
-    "name": "RSIBasedStrategy",
-    "class_path": "Strategies.RSIBasedStrategy.RSIBasedStrategy",
-    "use_strategy_exit": true,
-    "default_params": {
-      "rsi_period": 14,
-      "position_ratio": 0.5
-    }
-  },
-  "BollingerBandsStrategy": {
-    "name": "BollingerBandsStrategy",
-    "class_path": "Strategies.BollingerBandsStrategy.BollingerBandsStrategy",
+  "ThreeBarTrendStrategy": {
+    "name": "ThreeBarTrendStrategy",
+    "class_path": "Strategies.ThreeBarTrendStrategy.ThreeBarTrendStrategy",
     "use_strategy_exit": false,
     "default_params": {
-      "period": 20,
-      "std_dev": 2.0,
-      "position_ratio": 1.0,
-      "tp_rate": 0.02,
-      "sl_rate": 0.01
-    }
-  },
-  "MeanReversionStrategy": {
-    "name": "MeanReversionStrategy",
-    "class_path": "Strategies.MeanReversionStrategy.MeanReversionStrategy",
-    "use_strategy_exit": true,
-    "default_params": {
-      "ma_short": 10,
-      "ma_long": 20,
-      "position_ratio": 0.6
+      "position_ratio": 0.5,
+      "tp_rate": 0.01,
+      "sl_rate": 0.005
     }
   }
 }
