@@ -15,6 +15,8 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, mean_squared_error
 from okx_fetch_data import fetch_kline_df
+import traceback
+import ta
 
 df_cache = None  # 全局数据缓存
 
@@ -112,6 +114,47 @@ def generate_features_by_json(json_str):
     
     return df_cache.head().to_markdown(), ", ".join(df_cache.columns.tolist())
 
+def run_user_indicator_code(user_code_str):
+    global df_cache
+    if df_cache is None:
+        return "❌ 请先加载数据再运行指标函数。", "", ""
+    
+    base_cols = ["timestamp", "open", "high", "low", "close", "vol"]
+    df_base = df_cache[[col for col in df_cache.columns if col in base_cols]].copy()
+
+    local_registry = {}
+    def register_indicator(name):
+        def decorator(func):
+            local_registry[name] = func
+            return func
+        return decorator
+
+    exec_globals = {
+        "register_indicator": register_indicator,
+        "ta": ta,
+        "pd": pd,
+    }
+
+    try:
+        exec(user_code_str, exec_globals)
+        if not local_registry:
+            return "⚠️ 未找到通过 `@register_indicator(...)` 定义的函数。", "", ""
+        
+        new_cols_added = []
+        for name, func in local_registry.items():
+            result_df = func(df_base.copy())
+            if result_df is None or not isinstance(result_df, pd.DataFrame):
+                return f"⚠️ 指标 `{name}` 未返回有效 DataFrame。", "", ""
+            new_cols = [col for col in result_df.columns if col not in df_base.columns]
+            if not new_cols:
+                return f"⚠️ 指标 `{name}` 未生成任何新列。", "", ""
+            df_cache = pd.merge(df_cache, result_df[["timestamp"] + new_cols], on="timestamp", how="left")
+            new_cols_added.extend(new_cols)
+
+        return "✅ 自定义指标添加成功！", df_cache.tail().to_markdown(), ", ".join(df_cache.columns)
+    
+    except Exception:
+        return f"❌ 错误发生:\n```\n{traceback.format_exc()}\n```", "", ""
 # =====================================
 # 5. 生成 Target 列
 # =====================================
@@ -251,7 +294,29 @@ def build_data_process_ui():
                 outputs=[new_data_info, new_all_columns]
             )
         with gr.Tab("自定义指标"):
-            gr.Markdown("## 自定义指标")
+            gr.Markdown("## 自定义指标生成\n请使用 `@register_indicator(\"名称\")` 装饰器定义函数，返回新的 DataFrame。")
+
+            example_code = '''# ✅ 示例模板：
+@register_indicator("Stoch")
+def calculate_stoch(df, column='close', window=14):
+    stoch = ta.momentum.StochasticOscillator(
+        high=df['high'], low=df['low'], close=df[column], window=window)
+    df[f'Stoch_{window}'] = stoch.stoch()
+    return df'''
+
+            user_code = gr.Code(label="自定义指标代码", language="python", value=example_code)
+            run_button = gr.Button("运行自定义指标")
+
+            error_display = gr.Markdown()
+            df_tail_preview = gr.Markdown()
+            df_column_list = gr.Markdown(label="全部列名")
+
+            run_button.click(
+                fn=run_user_indicator_code,
+                inputs=[user_code],
+                outputs=[error_display, df_tail_preview, df_column_list]
+            )
+
         # ----- 生成 Target 列 -----
         gr.Markdown("## 选择 Target 列")
         target_type = gr.Dropdown(choices=["涨跌（1为涨，0为跌）", "涨跌幅"], label="选择 Target 类型")
