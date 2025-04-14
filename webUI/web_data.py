@@ -7,20 +7,25 @@ from datetime import datetime
 import ta
 from okx_fetch_data import fetch_kline_df
 from indicators import indicator_registry, indicator_params
+from inspect import getsource
 
 # 全局缓存
 df_cache = None
 custom_indicator_log = {}  # 用于记录用户自定义的指标名及其代码
-
+df_timestamp = None
+operation_log = [] 
 # =====================================
 # 1. 数据加载与展示
 # =====================================
 def show_data(days, bar, instId):
-    global df_cache
+    global df_cache, df_timestamp, operation_log
     df_cache = fetch_kline_df(days=days, bar=bar, instId=instId)
     if df_cache.empty:
         return "未获取到数据，请检查参数！", ""
+    df_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    operation_log = []  # 清空之前日志
     return df_cache.head().to_markdown(), ", ".join(df_cache.columns.tolist())
+
 
 # =====================================
 # 2. 单指标生成 —— 生成 JSON 参数及参数说明
@@ -58,6 +63,13 @@ def add_indicator_json(indicator_name, column, param_json_str):
             kwargs[name] = float(value) if value else 0.0
 
     df_cache = func(df_cache, **kwargs)
+    operation_log.append({
+        "type": "单指标",
+        "indicator": indicator_name,
+        "params": kwargs,
+        "generated_cols": [df_cache.columns[-1]],
+        "code": getsource(func)
+    })
     # if new_col_name:
     #     df_cache.rename(columns={df_cache.columns[-1]: new_col_name}, inplace=True)
     return df_cache.head().to_markdown(), ", ".join(df_cache.columns.tolist())
@@ -89,7 +101,13 @@ def generate_features_by_json(json_str):
             continue
         df_cache = func(df_cache, **kwargs)
         df_cache.rename(columns={df_cache.columns[-1]: new_col_name}, inplace=True)
-
+        operation_log.append({
+            "type": "批量指标",
+            "indicator": indicator_name,
+            "params": kwargs,
+            "generated_cols": [new_col_name],
+            "code": getsource(func)
+        })
     return df_cache.head().to_markdown(), ", ".join(df_cache.columns.tolist())
 
 # =====================================
@@ -137,12 +155,21 @@ def run_user_indicator_code(user_code_str):
                 new_name = f"{name}_{suffix}"
                 df_cache[new_name] = result_df[col]
                 renamed_cols[col] = new_name
+                
 
             new_cols_added.extend(renamed_cols.values())
             # ✅ 保存代码绑定列名
             for col in renamed_cols.values():
                 custom_indicator_log[col] = user_code_str
 
+            # ✅ 每个指标单独记录一条日志
+            operation_log.append({
+                "type": "自定义指标",
+                "indicator": name,
+                "params": "user-defined",
+                "generated_cols": list(renamed_cols.values()),
+                "code": user_code_str
+            })
         return "✅ 自定义指标添加成功！", "", ", ".join(df_cache.columns)
 
     except Exception as e:
@@ -171,6 +198,10 @@ def filter_custom_indicators(selected):
     keep_cols = [col for col in list(dict.fromkeys(keep_cols)) if col in df_cache.columns]
 
     df_cache = df_cache[keep_cols]
+    operation_log.append({
+        "type": "保留列",
+        "keep_custom_cols": selected
+    })
     return df_cache.tail().to_markdown(), ", ".join(df_cache.columns)
 
 
@@ -231,26 +262,32 @@ def clean_data(clean_type):
 # 7. 保存数据
 # =====================================
 def save_data(instId):
-    global df_cache
+    global df_cache, df_timestamp, operation_log
     if df_cache is None:
         return "请先获取数据！"
-    
-    # 确保目录存在
+
     save_dir = "./data"
     os.makedirs(save_dir, exist_ok=True)
 
-    # 文件名
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{instId}_{timestamp}.csv"
-    save_path = os.path.join(save_dir, filename)
+    # ✅ 使用 show_data 时生成的时间戳，而不是现在的时间
+    filename = f"{instId}_{df_timestamp or datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    csv_path = os.path.join(save_dir, f"{filename}.csv")
+    txt_path = os.path.join(save_dir, f"{filename}.txt")
 
-    # 保存
-    df_cache.to_csv(save_path, index=False)
+    df_cache.to_csv(csv_path, index=False)
 
-    # 返回绝对路径
-    abs_path = os.path.abspath(save_path)
+    with open(txt_path, "w", encoding="utf-8") as f:
+        for i, op in enumerate(operation_log, 1):
+            f.write(f"--- Step {i} ---\n")
+            for k, v in op.items():
+                if k == "code":
+                    f.write(f"\n用户自定义代码:\n{v}\n")
+                else:
+                    f.write(f"{k}: {json.dumps(v, ensure_ascii=False, indent=4)}\n")
+            f.write("\n")
 
-    return f"数据已保存至: {abs_path}"
+    return f"数据已保存至:\nCSV: {os.path.abspath(csv_path)}\nTXT: {os.path.abspath(txt_path)}"
+
 
 def build_data_process_ui():
     with gr.Tab("数据处理与特征工程"):
