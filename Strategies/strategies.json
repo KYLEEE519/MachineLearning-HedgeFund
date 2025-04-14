@@ -50,5 +50,17 @@
       "ma_long": 20,
       "position_ratio": 0.6
     }
+  },
+  "DualMaStrategy_model": {
+    "name": "DualMaStrategy_model",
+    "class_path": "Strategies.DualMaStrategy_model.DualMaStrategy_model",
+    "use_strategy_exit": false,
+    "default_params": {
+      "fast_ma": 5,
+      "slow_ma": 10,
+      "position_ratio": 0.7,
+      "tp_rate": 0.03,
+      "sl_rate": 0.01
+    }
   }
 }
