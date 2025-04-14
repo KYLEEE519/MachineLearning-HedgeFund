@@ -105,7 +105,8 @@ class SimulatedExchange:
             'take_profit': take_profit,
             'stop_loss': stop_loss,
             'margin': margin,
-            'fee': entry_fee
+            'fee': entry_fee,
+            'open_timestamp': timestamp
         })
         
         print(f"[{timestamp}] 开仓成功: {symbol} 方向:{direction} 数量:{position_size} 价格:{entry_price:.5f}")
@@ -140,17 +141,17 @@ class SimulatedExchange:
 
         # 记录日志
         self.trade_log.append({
-        'timestamp': timestamp,
-        'symbol': symbol,
-        'action': 'close',
-        'direction': direction,
-        'entry_price': entry_price,
-        'exit_price': exit_price,
-        'size': size,
-        'profit': net_profit,
-        'fee': exit_fee,
-        'margin': margin,
-        'open_timestamp': pos['open_timestamp']  # ✅ 加这一行
+            'timestamp': timestamp,
+            'symbol': symbol,
+            'action': 'close',
+            'direction': direction,
+            'entry_price': entry_price,
+            'exit_price': exit_price,
+            'size': size,
+            'profit': net_profit,
+            'fee': exit_fee,
+            'margin': margin,
+            'open_timestamp': pos.get('open_timestamp', timestamp) 
         })
         
         print(f"[{timestamp}] 平仓: {symbol} 方向:{direction} 数量:{size} 入场价:{entry_price:.5f} 出场价:{exit_price:.5f}")
@@ -177,7 +178,7 @@ class SimulatedExchange:
         current_close = kline['close']
 
         # **解包信号**
-        _, _, _, _, exit_flag = signal  # 只关心 exit_flag 是否需要平仓
+        direction, _, _, _, exit_signal, exit_ratio = signal  # 只关心 exit_flag 是否需要平仓
 
         # ---------- 1️⃣ 强制平仓检查 ----------
         if symbol in self.positions:
@@ -219,11 +220,20 @@ class SimulatedExchange:
                         self.positions[symbol].remove(pos)
 
         # ---------- 3️⃣ exit_signal 触发的平仓 ----------
-        if exit_flag:  # **如果策略要求先平仓**
-            if symbol in self.positions:
-                for pos in self.positions[symbol][:]:
-                    self.close_position(symbol, pos, current_close, timestamp)
-                    self.positions[symbol].remove(pos)
+        if exit_signal != 0 and symbol in self.positions:
+            for pos in self.positions[symbol][:]:
+                # 🧠 只平与 exit_signal 对应方向相反的仓位
+                if pos['direction'] == exit_signal:
+                    if exit_ratio < 1.0:
+                        partial_size = pos['size'] * exit_ratio
+                        partial_pos = copy.deepcopy(pos)
+                        partial_pos['size'] = partial_size
+                        self.close_position(symbol, partial_pos, current_close, timestamp)
+                        pos['size'] -= partial_size
+                    else:
+                        self.close_position(symbol, pos, current_close, timestamp)
+                        self.positions[symbol].remove(pos)
+
     def process_opening(self, symbol, kline, signal):
         """
         处理 **开仓** 逻辑（仅执行开仓，不涉及平仓）
@@ -238,7 +248,7 @@ class SimulatedExchange:
         current_close = kline['close']
 
         # 解析新信号
-        direction, tp, sl, plan_size, _ = signal
+        direction, tp, sl, plan_size, _, _ = signal
 
         # (a) 若 direction=0 => 不开仓
         if direction == 0:

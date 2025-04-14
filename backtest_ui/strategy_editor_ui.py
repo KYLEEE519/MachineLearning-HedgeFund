@@ -13,6 +13,8 @@ import pandas as pd
 from pathlib import Path
 import json
 def is_valid_strategy_code(code: str):
+    import ast, tempfile, importlib.util, uuid, traceback, pandas as pd, inspect
+
     # ---------- 静态分析 ----------
     try:
         tree = ast.parse(code)
@@ -34,12 +36,10 @@ def is_valid_strategy_code(code: str):
 
     # ---------- 动态执行并测试 ----------
     try:
-        # 创建临时模块文件
         temp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".py")
         temp_path.write(code.encode())
         temp_path.close()
 
-        # 加载临时模块
         module_name = f"user_strategy_{uuid.uuid4().hex}"
         spec = importlib.util.spec_from_file_location(module_name, temp_path.name)
         module = importlib.util.module_from_spec(spec)
@@ -47,51 +47,42 @@ def is_valid_strategy_code(code: str):
 
         StrategyClass = getattr(module, class_name)
 
-        # 构造最小测试输入
         df = pd.DataFrame({
             "timestamp": pd.date_range("2024-01-01", periods=50, freq="5min"),
-            "open": [100]*50,
-            "high": [101]*50,
-            "low": [99]*50,
-            "close": [100]*50
+            "open": [100] * 50,
+            "high": [101] * 50,
+            "low": [99] * 50,
+            "close": [100] * 50,
+            "vol":[100] *50
         })
 
-        # 初始化策略（自动探测可用参数）
-        import inspect
         init_args = inspect.signature(StrategyClass.__init__).parameters
         init_kwargs = {k: 10 for k in init_args if k not in ['self', 'df']}
         init_kwargs['df'] = df
         strategy = StrategyClass(**init_kwargs)
 
-        # 尝试调用 generate_signal
         result = strategy.generate_signal(index=30, current_balance=10000, leverage=1.0, current_position=0)
 
-        # ---------- 格式检查 ----------
-        if not isinstance(result, tuple) or len(result) != 5:
-            return False, f"❌ 返回值必须是长度为5的tuple，而不是：{result}"
+        if not isinstance(result, tuple) or len(result) != 6:
+            return False, f"❌ 返回值必须是长度为6的tuple，而不是：{result}"
 
-        direction, tp, sl, size, exit_signal = result
+        direction, tp, sl, size, exit_signal, exit_ratio = result
 
         if direction not in [-1, 0, 1]:
             return False, f"❌ direction 取值必须是 -1, 0, 1：当前是 {direction}"
         if not isinstance(size, (int, float)) or size < 0:
             return False, f"❌ position_size 应该是非负数：当前是 {size}"
-        if not isinstance(exit_signal, bool):
-            return False, f"❌ exit_signal 应为 bool 类型：当前是 {exit_signal}"
+        if exit_signal not in [-1, 0, 1]:
+            return False, f"❌ exit_signal 应为 -1, 0 或 1：当前是 {exit_signal}"
+        if not isinstance(exit_ratio, (int, float)) or not (0 <= exit_ratio <= 1):
+            return False, f"❌ exit_ratio 应为 0 到 1 之间的浮点数：当前是 {exit_ratio}"
 
-        # 策略类型判断
-        if tp is None and sl is None:
-            # 类型二：不设置止盈止损
-            return True, f"✅ 检测通过（无止盈止损策略），类名：{class_name}"
-        elif tp is not None and sl is not None and exit_signal is False:
-            # 类型一：设置止盈止损且不使用 exit_signal
-            return True, f"✅ 检测通过（止盈止损策略），类名：{class_name}"
-        else:
-            return False, "❌ 返回格式不合法：止盈/止损/exit_signal 不符合任一策略类型"
+        return True, f"✅ 检测通过，类名：{class_name}"
 
     except Exception as e:
         tb = traceback.format_exc()
         return False, f"❌ 动态执行失败：\n{str(e)}\n{tb}"
+
 import inspect
 def extract_default_params_from_code(code: str):
     try:
