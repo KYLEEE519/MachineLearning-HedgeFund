@@ -7,13 +7,13 @@ import os
 from datetime import datetime
 import gradio as gr
 import pandas as pd
-import xgboost as xgb
-import matplotlib.pyplot as plt
+# import xgboost as xgb
+# import matplotlib.pyplot as plt
 import os
-import pickle
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, mean_squared_error
+# import pickle
+# import numpy as np
+# from sklearn.model_selection import train_test_split
+# from sklearn.metrics import accuracy_score, mean_squared_error
 from okx_fetch_data import fetch_kline_df
 import traceback
 import ta
@@ -316,9 +316,10 @@ def calculate_stoch(df, column='close', window=14):
                 inputs=[user_code],
                 outputs=[error_display, df_tail_preview, df_column_list]
             )
-
+        with gr.Tab("自定义指标选择"):
+            gr.Markdown("## 选择客户自定义指标并生成")
         # ----- 生成 Target 列 -----
-        gr.Markdown("## 选择 Target 列")
+        gr.Markdown("## 生成 Target 列")
         target_type = gr.Dropdown(choices=["涨跌（1为涨，0为跌）", "涨跌幅"], label="选择 Target 类型")
         target_data_info = gr.Markdown()
         target_all_columns = gr.Markdown(label="最新全部列名")

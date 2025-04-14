@@ -2,27 +2,25 @@ from timexer import train_timexer_model
 import gradio as gr
 import pandas as pd
 import json
-from okx_fetch_data import fetch_kline_df
-from indicators import indicator_registry, indicator_params
+# from okx_fetch_data import fetch_kline_df
+# from indicators import indicator_registry, indicator_params
 import os
 from datetime import datetime
-import gradio as gr
-import pandas as pd
 import xgboost as xgb
 import matplotlib.pyplot as plt
-import os
 import pickle
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, mean_squared_error
-from okx_fetch_data import fetch_kline_df
+# from sklearn.model_selection import train_test_split
+# from okx_fetch_data import fetch_kline_df
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.metrics import accuracy_score, mean_squared_error, roc_auc_score, roc_curve, precision_score, recall_score, f1_score
 
-def get_columns():
-    global df_csv
-    if df_csv is None or df_csv.empty:
-        return gr.update(choices=[]), gr.update(choices=[])
-    cols = df_csv.columns.tolist()
-    return gr.update(choices=cols), gr.update(choices=cols)
+# def get_columns():
+#     global df_csv
+#     if df_csv is None or df_csv.empty:
+#         return gr.update(choices=[]), gr.update(choices=[])
+#     cols = df_csv.columns.tolist()
+#     return gr.update(choices=cols), gr.update(choices=cols)
 
 
 # =====================================
@@ -33,31 +31,40 @@ df_csv = None    # 加载的 CSV 数据
 def load_csv(csv_path):
     global df_csv
     if not os.path.exists(csv_path):
-        return "路径不存在，请检查！", ""
+        return "路径不存在，请检查！", "", gr.update(choices=[]), gr.update(choices=[])
 
     df_csv = pd.read_csv(csv_path)
-    return df_csv.head().to_markdown(), ", ".join(df_csv.columns.tolist())
+    cols = df_csv.columns.tolist()
+    
+    # 注意：这里返回的是固定的 ['target'] 而不是列名
+    return (
+        df_csv.head().to_markdown(), 
+        ", ".join(cols), 
+        gr.update(choices=cols), 
+        gr.update(choices=["target"], value="target")  # 固定唯一选项
+    )
 
-def validate_data(df, feature_cols, target_col):
-    # 检查特征列和目标列是否存在
-    for col in feature_cols:
-        if col not in df.columns:
-            return False, f"特征列 {col} 不存在"
 
-    if target_col not in df.columns:
-        return False, f"目标列 {target_col} 不存在"
+# def validate_data(df, feature_cols, target_col):
+#     # 检查特征列和目标列是否存在
+#     for col in feature_cols:
+#         if col not in df.columns:
+#             return False, f"特征列 {col} 不存在"
 
-    # 检查目标列类别数
-    y = df[target_col]
-    if y.nunique() <= 1:
-        return False, f"目标列 {target_col} 类别数 <= 1，不满足分类或回归任务要求"
+#     if target_col not in df.columns:
+#         return False, f"目标列 {target_col} 不存在"
 
-    # 检查特征列是否为数值类型
-    for col in feature_cols:
-        if not pd.api.types.is_numeric_dtype(df[col]):
-            return False, f"特征列 {col} 存在非数值类型数据"
+#     # 检查目标列类别数
+#     y = df[target_col]
+#     if y.nunique() <= 1:
+#         return False, f"目标列 {target_col} 类别数 <= 1，不满足分类或回归任务要求"
 
-    return True, "数据检查通过"
+#     # 检查特征列是否为数值类型
+#     for col in feature_cols:
+#         if not pd.api.types.is_numeric_dtype(df[col]):
+#             return False, f"特征列 {col} 存在非数值类型数据"
+
+#     return True, "数据检查通过"
 
 # 检查数据合法性函数
 def check_data_validity(feature_cols, target_col):
@@ -67,25 +74,30 @@ def check_data_validity(feature_cols, target_col):
 
     df = df_csv
 
+    # 检查目标列
     if target_col not in df.columns:
         return f"❌ 目标列 {target_col} 不存在，请检查！"
 
-    if not all([col in df.columns for col in feature_cols]):
-        return f"❌ 部分特征列不存在，请检查！"
+    # 检查特征列
+    missing_cols = [col for col in feature_cols if col not in df.columns]
+    if missing_cols:
+        return f"❌ 以下特征列不存在: {missing_cols}"
 
-    if df[feature_cols].select_dtypes(include=["number"]).shape[1] != len(feature_cols):
-        return "❌ 存在非数值型特征列，XGBoost 仅支持数值特征！"
+    # 检查特征列是否全为数值型
+    non_numeric_cols = df[feature_cols].select_dtypes(exclude=["number"]).columns.tolist()
+    if non_numeric_cols:
+        return f"❌ 以下特征列存在非数值类型数据，仅支持数值特征: {non_numeric_cols}"
 
-    if df[target_col].nunique() < 2:
-        return "❌ 目标列类别数不足，请检查！"
+    # 检查 target 列类别数
+    unique_num = df[target_col].nunique()
+    if unique_num < 2:
+        return f"❌ 目标列 {target_col} 类别数不足，仅有 {unique_num} 类"
 
-    if df[target_col].nunique() > 10:
-        return "❌ 目标列类别数过多，请检查！"
+    if unique_num > 10:
+        return f"❌ 目标列 {target_col} 类别数过多，有 {unique_num} 类，不推荐"
 
     return "✅ 数据检查通过！"
 
-
-from sklearn.metrics import accuracy_score, mean_squared_error, roc_auc_score, roc_curve, precision_score, recall_score, f1_score
 
 def train_model(feature_cols, target_col,
                 learning_rate, max_depth, n_estimators,
@@ -190,10 +202,7 @@ def train_model(feature_cols, target_col,
             f"模型已保存至: {os.path.abspath(model_path)}\nAUC: {auc}",
             roc_path)
 
-from sklearn.model_selection import RandomizedSearchCV
-from sklearn.metrics import accuracy_score, mean_squared_error
-import numpy as np
-import json
+
 
 def hyperparameter_search(feature_cols, target_col, n_iter,
                           lr_min, lr_max, lr_step,
@@ -272,8 +281,11 @@ def build_model_train_ui():
         feature_cols = gr.Dropdown(choices=[], label="选择特征列(可多选)", multiselect=True)
         target_col = gr.Dropdown(choices=[], label="选择目标列(单选)", multiselect=False)
 
-        load_csv_button.click(fn=load_csv, inputs=[csv_path], outputs=[data_info, all_columns])
-        load_csv_button.click(fn=get_columns, inputs=[], outputs=[feature_cols, target_col])
+        load_csv_button.click(
+                        fn=load_csv,
+                        inputs=[csv_path],
+                        outputs=[data_info, all_columns, feature_cols, target_col]
+                    )
         gr.Markdown("## 数据检查")
 
         check_info = gr.Markdown()  # 显示检查结果
@@ -285,34 +297,87 @@ def build_model_train_ui():
             outputs=[check_info]
         )
         with gr.Tab("模型训练"):
-            gr.Markdown("### 模型参数设置")
+            with gr.Tab("手动调整参数"):
+                gr.Markdown("### 模型参数设置")
 
-            learning_rate = gr.Slider(0.001, 1.0, 0.1, step=0.001, label="学习率")
-            n_estimators = gr.Slider(10, 500, 50, step=10, label="迭代次数")
-            max_depth = gr.Slider(1, 15, 3, step=1, label="最大深度")
-            subsample = gr.Slider(0.6, 0.9, 0.8, step=0.1, label="subsample（行采样比例）")
-            colsample_bytree = gr.Slider(0.6, 1.0, 0.8, step=0.1, label="colsample_bytree（列采样比例）")
-            gamma = gr.Slider(0.0, 0.5, 0.1, step=0.1, label="gamma（最小损失减少）")
-            reg_lambda = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="reg_lambda（L2 正则）")
-            reg_alpha = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="reg_alpha（L1 正则）")
+                learning_rate = gr.Slider(0.001, 1.0, 0.1, step=0.001, label="学习率")
+                n_estimators = gr.Slider(10, 500, 50, step=10, label="迭代次数")
+                max_depth = gr.Slider(1, 15, 3, step=1, label="最大深度")
+                subsample = gr.Slider(0.6, 0.9, 0.8, step=0.1, label="subsample（行采样比例）")
+                colsample_bytree = gr.Slider(0.6, 1.0, 0.8, step=0.1, label="colsample_bytree（列采样比例）")
+                gamma = gr.Slider(0.0, 0.5, 0.1, step=0.1, label="gamma（最小损失减少）")
+                reg_lambda = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="reg_lambda（L2 正则）")
+                reg_alpha = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="reg_alpha（L1 正则）")
 
-            train_button = gr.Button("开始训练")
+                train_button = gr.Button("开始训练")
 
-            loss_img = gr.Image(label="Train vs Val Loss 曲线")
-            importance_img = gr.Image(label="特征重要性图")
-            acc = gr.Textbox(label="验证集评估指标")
-            save_info = gr.Textbox(label="模型保存信息")
-            roc_img = gr.Image(label="ROC 曲线图（分类任务）")
+                loss_img = gr.Image(label="Train vs Val Loss 曲线")
+                importance_img = gr.Image(label="特征重要性图")
+                acc = gr.Textbox(label="验证集评估指标")
+                save_info = gr.Textbox(label="模型保存信息")
+                roc_img = gr.Image(label="ROC 曲线图（分类任务）")
 
-            train_button.click(
-                fn=train_model,
-                inputs=[
-                    feature_cols, target_col,
-                    learning_rate, max_depth, n_estimators,
-                    subsample, colsample_bytree, gamma, reg_lambda, reg_alpha
-                ],
-                outputs=[loss_img, importance_img, acc, save_info, roc_img]
-            )
+                train_button.click(
+                    fn=train_model,
+                    inputs=[
+                        feature_cols, target_col,
+                        learning_rate, max_depth, n_estimators,
+                        subsample, colsample_bytree, gamma, reg_lambda, reg_alpha
+                    ],
+                    outputs=[loss_img, importance_img, acc, save_info, roc_img]
+                )
+            with gr.Tab("通过json调整参数"):
+                gr.Markdown("### 使用 JSON 输入训练参数")
+
+                json_input = gr.Code(label="输入参数 JSON", language="json", value='''{
+                "subsample": 0.6,
+                "reg_lambda": 1.0,
+                "reg_alpha": 0.0,
+                "n_estimators": 100,
+                "max_depth": 2,
+                "learning_rate": 0.002,
+                "gamma": 0.1,
+                "colsample_bytree": 0.6
+            }''')
+
+                json_train_button = gr.Button("使用 JSON 参数开始训练")
+
+                json_loss_img = gr.Image(label="Train vs Val Loss 曲线")
+                json_importance_img = gr.Image(label="特征重要性图")
+                json_acc = gr.Textbox(label="验证集评估指标")
+                json_save_info = gr.Textbox(label="模型保存信息")
+                json_roc_img = gr.Image(label="ROC 曲线图（分类任务）")
+
+                def train_with_json_params(params_json, feature_cols, target_col):
+                    try:
+                        params = json.loads(params_json)
+                    except json.JSONDecodeError as e:
+                        return "", "", "", f"JSON 解析错误: {e}", ""
+
+                    keys = ["learning_rate", "max_depth", "n_estimators", "subsample", "colsample_bytree", "gamma", "reg_lambda", "reg_alpha"]
+                    for k in keys:
+                        if k not in params:
+                            return "", "", "", f"缺少参数: {k}", ""
+
+                    return train_model(
+                        feature_cols, target_col,
+                        params["learning_rate"],
+                        params["max_depth"],
+                        params["n_estimators"],
+                        params["subsample"],
+                        params["colsample_bytree"],
+                        params["gamma"],
+                        params["reg_lambda"],
+                        params["reg_alpha"]
+                    )
+
+                json_train_button.click(
+                    fn=train_with_json_params,
+                    inputs=[json_input, feature_cols, target_col],
+                    outputs=[json_loss_img, json_importance_img, json_acc, json_save_info, json_roc_img]
+                )
+
+
         with gr.Tab("超参数搜索"):
             gr.Markdown("# XGBoost 超参数搜索（RandomizedSearchCV）")
 
