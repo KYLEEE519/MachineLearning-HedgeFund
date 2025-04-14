@@ -154,13 +154,25 @@ def run_user_indicator_code(user_code_str):
 # 6. 自定义指标选择（筛选保留）
 # =====================================
 def filter_custom_indicators(selected):
-    global df_cache
+    global df_cache, custom_indicator_log
     if df_cache is None:
         return "请先加载数据", ""
+
     base_cols = ["timestamp", "open", "high", "low", "close", "vol", "target"]
-    keep_cols = base_cols + selected
-    df_cache = df_cache[[col for col in df_cache.columns if col in keep_cols]]
+    all_cols = df_cache.columns.tolist()
+
+    # 自定义指标列
+    custom_cols = list(custom_indicator_log.keys())
+
+    # 被选中的自定义指标列 + 非自定义列
+    keep_cols = base_cols + [col for col in all_cols if col not in custom_cols] + selected
+
+    # 去重 + 保留存在于 df 中的列
+    keep_cols = [col for col in list(dict.fromkeys(keep_cols)) if col in df_cache.columns]
+
+    df_cache = df_cache[keep_cols]
     return df_cache.tail().to_markdown(), ", ".join(df_cache.columns)
+
 
 
 # 你可以将这个函数接入 gr.CheckboxGroup，用于在 UI 中让用户筛选要保留的自定义指标。
