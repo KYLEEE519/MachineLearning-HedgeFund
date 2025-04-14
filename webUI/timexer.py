@@ -8,6 +8,10 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, confu
 import matplotlib.pyplot as plt
 import io
 from PIL import Image
+import json
+import os
+import random
+from datetime import datetime
 
 class TimeXer(nn.Module):
     def __init__(self, d_en, d_ex, d_model=128, n_heads=4, n_layers=2, lookback=64, patch_size=8):
@@ -103,8 +107,8 @@ def train_timexer_model(df,
     criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight_value], device=device))
     optimizer = optim.AdamW(model.parameters(), lr=lr)
 
-    loss_curve = []
-    acc_curve = []
+    loss_curve, val_loss_curve = [], []
+    acc_curve, val_acc_curve = [], []
 
     for epoch in range(epochs):
         model.train()
@@ -120,13 +124,17 @@ def train_timexer_model(df,
         loss_curve.append(np.mean(losses))
 
         model.eval()
-        preds, trues = [], []
+        val_losses, preds, trues = [], [], []
         with torch.no_grad():
             for x_en, x_ex, labels in test_loader:
-                logits = model(x_en.to(device), x_ex.to(device))
+                x_en, x_ex, labels = x_en.to(device), x_ex.to(device), labels.to(device)
+                logits = model(x_en, x_ex)
+                val_losses.append(criterion(logits, labels).item())
                 probs = torch.sigmoid(logits).cpu().numpy().flatten()
                 preds.extend((probs > 0.5).astype(int))
-                trues.extend(labels.numpy().flatten())
+                trues.extend(labels.cpu().numpy().flatten())
+        val_loss_curve.append(np.mean(val_losses))
+        val_acc_curve.append(accuracy_score(trues, preds))
         acc_curve.append(accuracy_score(trues, preds))
 
     cm = confusion_matrix(trues, preds)
@@ -140,18 +148,22 @@ def train_timexer_model(df,
     plt.close(fig_cm)
 
     fig_loss, ax_loss = plt.subplots()
-    ax_loss.plot(loss_curve, label="Loss")
+    ax_loss.plot(loss_curve, label="Train Loss")
+    ax_loss.plot(val_loss_curve, label="Val Loss")
     ax_loss.set_title("Loss Curve")
     ax_loss.set_xlabel("Epoch")
     ax_loss.set_ylabel("Loss")
+    ax_loss.legend()
     loss_img = fig_to_image(fig_loss)
     plt.close(fig_loss)
 
     fig_acc, ax_acc = plt.subplots()
-    ax_acc.plot(acc_curve, label="Accuracy", color='green')
+    ax_acc.plot(acc_curve, label="Train Acc", color='green')
+    ax_acc.plot(val_acc_curve, label="Val Acc", color='orange')
     ax_acc.set_title("Accuracy over Epochs")
     ax_acc.set_xlabel("Epoch")
     ax_acc.set_ylabel("Accuracy")
+    ax_acc.legend()
     acc_img = fig_to_image(fig_acc)
     plt.close(fig_acc)
 
@@ -159,4 +171,27 @@ def train_timexer_model(df,
     prec = precision_score(trues, preds, zero_division=0)
     rec = recall_score(trues, preds, zero_division=0)
 
-    return loss_img, acc_img, cm_img, f"Final Acc: {acc:.4f}, Prec: {prec:.4f}, Rec: {rec:.4f}"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_name = f"timexer_{timestamp}"
+    os.makedirs("models", exist_ok=True)
+    torch.save(model.state_dict(), f"models/{model_name}.pt")
+    with open(f"models/{model_name}_config.json", "w") as f:
+        json.dump({"lookback": lookback, "patch_size": patch_size, "epochs": epochs,
+                   "batch_size": batch_size, "lr": lr, "d_model": d_model,
+                   "n_heads": n_heads, "n_layers": n_layers}, f, indent=4)
+
+    return loss_img, acc_img, cm_img, f"Acc: {acc:.4f}, Prec: {prec:.4f}, Rec: {rec:.4f}", f"模型已保存至: models/{model_name}.pt"
+
+def random_search_timexer(df, param_grid, n_trials=10):
+    results = []
+    for _ in range(n_trials):
+        params = {key: random.choice(values) for key, values in param_grid.items()}
+        try:
+            _, _, _, metric_str, _ = train_timexer_model(df, **params)
+            acc = float(metric_str.split("Acc:")[1].split(",")[0])
+        except Exception:
+            acc = 0.0
+        results.append((params, acc))
+    results.sort(key=lambda x: x[1], reverse=True)
+    best_params, best_score = results[0]
+    return best_params, best_score

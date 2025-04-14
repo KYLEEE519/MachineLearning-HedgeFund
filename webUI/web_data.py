@@ -1,24 +1,16 @@
 import gradio as gr
 import pandas as pd
 import json
+import os
+import traceback
+from datetime import datetime
+import ta
 from okx_fetch_data import fetch_kline_df
 from indicators import indicator_registry, indicator_params
-import os
-from datetime import datetime
-import gradio as gr
-import pandas as pd
-# import xgboost as xgb
-# import matplotlib.pyplot as plt
-import os
-# import pickle
-# import numpy as np
-# from sklearn.model_selection import train_test_split
-# from sklearn.metrics import accuracy_score, mean_squared_error
-from okx_fetch_data import fetch_kline_df
-import traceback
-import ta
 
-df_cache = None  # 全局数据缓存
+# 全局缓存
+df_cache = None
+custom_indicator_log = {}  # 用于记录用户自定义的指标名及其代码
 
 # =====================================
 # 1. 数据加载与展示
@@ -34,25 +26,11 @@ def show_data(days, bar, instId):
 # 2. 单指标生成 —— 生成 JSON 参数及参数说明
 # =====================================
 def update_param_inputs_json(indicator_name):
-    """
-    根据所选指标，从 indicator_params 中取出该指标所需参数，
-    生成：
-      1. 默认的 JSON 字符串（例如 {"window": ""}）
-      2. 参数说明的 Markdown 文本（例如：- **window** (`int`): 窗口长度，建议取5~20）
-    """
     params = indicator_params.get(indicator_name, [])
-    default_dict = {}
-    for p in params:
-        default_dict[p["name"]] = ""
+    default_dict = {p["name"]: "" for p in params}
     json_str = json.dumps(default_dict, indent=4)
-    
-    # 生成说明文档，每个参数一行
-    doc_lines = []
-    for p in params:
-        doc_lines.append(f"- **{p['name']}** (`{p['type']}`): {p['desc']}")
-    doc_text = "\n".join(doc_lines)
-    
-    return gr.update(value=json_str, visible=True), doc_text
+    doc_lines = [f"- **{p['name']}** (`{p['type']}`): {p['desc']}" for p in params]
+    return gr.update(value=json_str, visible=True), "\n".join(doc_lines)
 
 # =====================================
 # 3. 单指标生成 —— 解析 JSON 参数并生成指标
@@ -67,7 +45,7 @@ def add_indicator_json(indicator_name, column, new_col_name, param_json_str):
         param_json = json.loads(param_json_str)
     except Exception as e:
         return f"JSON 格式错误: {e}", ""
-    
+
     func = indicator_registry[indicator_name]
     param_info = indicator_params[indicator_name]
     kwargs = {"column": column}
@@ -95,7 +73,7 @@ def generate_features_by_json(json_str):
         feature_config = json.loads(json_str)
     except Exception as e:
         return f"JSON 格式错误：{e}", ""
-    
+
     for indicator_name, config in feature_config.items():
         if not config.get("enable", False):
             continue
@@ -103,22 +81,25 @@ def generate_features_by_json(json_str):
             continue
         func = indicator_registry[indicator_name]
         param_dict = config.get("params", {})
-        kwargs = {"column": "close"}  # 默认作用于 close 列
+        kwargs = {"column": "close"}
         kwargs.update(param_dict)
-        
+
         new_col_name = indicator_name + "_" + "_".join(str(v) for v in param_dict.values())
         if new_col_name in df_cache.columns:
             continue
         df_cache = func(df_cache, **kwargs)
         df_cache.rename(columns={df_cache.columns[-1]: new_col_name}, inplace=True)
-    
+
     return df_cache.head().to_markdown(), ", ".join(df_cache.columns.tolist())
 
+# =====================================
+# 5. 自定义指标执行并记录代码
+# =====================================
 def run_user_indicator_code(user_code_str):
-    global df_cache
+    global df_cache, custom_indicator_log
     if df_cache is None:
         return "❌ 请先加载数据再运行指标函数。", "", ""
-    
+
     base_cols = ["timestamp", "open", "high", "low", "close", "vol"]
     df_base = df_cache[[col for col in df_cache.columns if col in base_cols]].copy()
 
@@ -139,7 +120,7 @@ def run_user_indicator_code(user_code_str):
         exec(user_code_str, exec_globals)
         if not local_registry:
             return "⚠️ 未找到通过 `@register_indicator(...)` 定义的函数。", "", ""
-        
+
         new_cols_added = []
         for name, func in local_registry.items():
             result_df = func(df_base.copy())
@@ -148,13 +129,41 @@ def run_user_indicator_code(user_code_str):
             new_cols = [col for col in result_df.columns if col not in df_base.columns]
             if not new_cols:
                 return f"⚠️ 指标 `{name}` 未生成任何新列。", "", ""
-            df_cache = pd.merge(df_cache, result_df[["timestamp"] + new_cols], on="timestamp", how="left")
-            new_cols_added.extend(new_cols)
 
-        return "✅ 自定义指标添加成功！", df_cache.tail().to_markdown(), ", ".join(df_cache.columns)
-    
-    except Exception:
-        return f"❌ 错误发生:\n```\n{traceback.format_exc()}\n```", "", ""
+            # ✅ 重命名新增列，带上注册名
+            renamed_cols = {}
+            for col in new_cols:
+                suffix = col.split("_")[-1] if "_" in col else col
+                new_name = f"{name}_{suffix}"
+                df_cache[new_name] = result_df[col]
+                renamed_cols[col] = new_name
+
+            new_cols_added.extend(renamed_cols.values())
+            # ✅ 保存代码绑定列名
+            for col in renamed_cols.values():
+                custom_indicator_log[col] = user_code_str
+
+        return "✅ 自定义指标添加成功！", "", ", ".join(df_cache.columns)
+
+    except Exception as e:
+        err_msg = traceback.format_exc()
+        return f"❌ 错误发生:\n\n```\n{err_msg}\n```", "", ""
+
+
+# =====================================
+# 6. 自定义指标选择（筛选保留）
+# =====================================
+def filter_custom_indicators(selected):
+    global df_cache
+    if df_cache is None:
+        return "请先加载数据", ""
+    base_cols = ["timestamp", "open", "high", "low", "close", "vol", "target"]
+    keep_cols = base_cols + selected
+    df_cache = df_cache[[col for col in df_cache.columns if col in keep_cols]]
+    return df_cache.tail().to_markdown(), ", ".join(df_cache.columns)
+
+
+# 你可以将这个函数接入 gr.CheckboxGroup，用于在 UI 中让用户筛选要保留的自定义指标。
 # =====================================
 # 5. 生成 Target 列
 # =====================================
@@ -233,7 +242,7 @@ def save_data(instId):
 
 def build_data_process_ui():
     with gr.Tab("数据处理与特征工程"):
-        gr.Markdown("# XGBoost 可视化训练工具（完整功能版）")
+        gr.Markdown("可视化训练工具")
         
         # ----- 数据获取 -----
         with gr.Row():
@@ -308,16 +317,34 @@ def calculate_stoch(df, column='close', window=14):
             run_button = gr.Button("运行自定义指标")
 
             error_display = gr.Markdown()
-            df_tail_preview = gr.Markdown()
-            df_column_list = gr.Markdown(label="全部列名")
+            df_column_list = gr.Markdown(label="当前全部列名")
 
             run_button.click(
                 fn=run_user_indicator_code,
                 inputs=[user_code],
-                outputs=[error_display, df_tail_preview, df_column_list]
+                outputs=[error_display, df_column_list]
             )
+
         with gr.Tab("自定义指标选择"):
-            gr.Markdown("## 选择客户自定义指标并生成")
+            gr.Markdown("## 选择保留的自定义指标列")
+            selectable_cols = gr.CheckboxGroup(choices=[], label="可选自定义指标列")
+            preview_filtered = gr.Markdown()
+            updated_columns = gr.Markdown(label="最新列名")
+
+            def update_selectable_cols():
+                from web_data import custom_indicator_log
+                return gr.update(choices=list(custom_indicator_log.keys()))
+
+            refresh_button = gr.Button("🔄 刷新可选指标列表")
+            refresh_button.click(fn=update_selectable_cols, inputs=[], outputs=[selectable_cols])
+
+            apply_filter_button = gr.Button("✅ 应用筛选")
+            apply_filter_button.click(
+                fn=filter_custom_indicators,
+                inputs=[selectable_cols],
+                outputs=[preview_filtered, updated_columns]
+            )
+
         # ----- 生成 Target 列 -----
         gr.Markdown("## 生成 Target 列")
         target_type = gr.Dropdown(choices=["涨跌（1为涨，0为跌）", "涨跌幅"], label="选择 Target 类型")

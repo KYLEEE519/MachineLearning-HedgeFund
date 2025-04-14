@@ -460,43 +460,91 @@ def build_model_train_ui():
         timexer_load_btn.click(fn=load_csv_for_timexer, inputs=[timexer_csv_path],
                             outputs=[timexer_data_preview, timexer_df_state])
 
-        # ===== 参数设置区 =====
-        gr.Markdown("## 模型参数设置")
-        with gr.Row():
-            lookback = gr.Slider(16, 128, value=64, step=8, label="LOOKBACK 序列长度")
-            patch_size = gr.Slider(4, 32, value=8, step=4, label="PATCH_SIZE")
-            d_model = gr.Slider(32, 256, value=128, step=32, label="d_model (Transformer hidden dim)")
-        with gr.Row():
-            n_heads = gr.Slider(1, 8, value=4, step=1, label="多头注意力头数")
-            n_layers = gr.Slider(1, 6, value=2, step=1, label="Transformer 层数")
-        with gr.Row():
-            epochs = gr.Slider(1, 50, value=10, step=1, label="训练轮数 (Epochs)")
-            batch_size = gr.Slider(16, 256, value=64, step=16, label="Batch Size")
-            lr = gr.Slider(1e-5, 1e-2, value=1e-3, step=1e-5, label="学习率")
+        with gr.Tab("模型参数设置"):
+            gr.Markdown("## 模型参数设置")
+            with gr.Row():
+                lookback = gr.Slider(16, 128, value=64, step=8, label="LOOKBACK 序列长度")
+                patch_size = gr.Slider(4, 32, value=8, step=4, label="PATCH_SIZE")
+                d_model = gr.Slider(32, 256, value=128, step=32, label="d_model (Transformer hidden dim)")
+            with gr.Row():
+                n_heads = gr.Slider(1, 8, value=4, step=1, label="多头注意力头数")
+                n_layers = gr.Slider(1, 6, value=2, step=1, label="Transformer 层数")
+            with gr.Row():
+                epochs = gr.Slider(1, 50, value=10, step=1, label="训练轮数 (Epochs)")
+                batch_size = gr.Slider(16, 256, value=64, step=16, label="Batch Size")
+                lr = gr.Slider(1e-5, 1e-2, value=1e-3, step=1e-5, label="学习率")
 
-        # ===== 训练与可视化输出 =====
-        train_timexer_btn = gr.Button("开始训练 TimeXer 模型")
+            train_timexer_btn = gr.Button("开始训练 TimeXer 模型")
 
-        loss_img = gr.Image(label="Loss 曲线")
-        acc_img = gr.Image(label="Accuracy 曲线")
-        cm_img = gr.Image(label="混淆矩阵")
-        metric_info = gr.Textbox(label="最终指标 (Acc / Prec / Rec)")
+            loss_img = gr.Image(label="Loss 曲线")
+            acc_img = gr.Image(label="Accuracy 曲线")
+            cm_img = gr.Image(label="混淆矩阵")
+            metric_info = gr.Textbox(label="最终指标 (Acc / Prec / Rec)")
+            model_save_info = gr.Textbox(label="模型保存路径")
 
-        def run_timexer(df, lookback, patch_size, epochs, batch_size, lr, d_model, n_heads, n_layers):
-            if df is None or not isinstance(df, pd.DataFrame):
-                return None, None, None, "请先加载合法的 CSV 数据"
-            return train_timexer_model(df,
-                                    lookback=int(lookback),
-                                    patch_size=int(patch_size),
-                                    epochs=int(epochs),
-                                    batch_size=int(batch_size),
-                                    lr=float(lr),
-                                    d_model=int(d_model),
-                                    n_heads=int(n_heads),
-                                    n_layers=int(n_layers))
+            def run_timexer(df, lookback, patch_size, epochs, batch_size, lr, d_model, n_heads, n_layers):
+                if df is None or not isinstance(df, pd.DataFrame):
+                    return None, None, None, "请先加载合法的 CSV 数据", ""
+                return train_timexer_model(df,
+                                        lookback=int(lookback),
+                                        patch_size=int(patch_size),
+                                        epochs=int(epochs),
+                                        batch_size=int(batch_size),
+                                        lr=float(lr),
+                                        d_model=int(d_model),
+                                        n_heads=int(n_heads),
+                                        n_layers=int(n_layers))
 
-        train_timexer_btn.click(
-            fn=run_timexer,
-            inputs=[timexer_df_state, lookback, patch_size, epochs, batch_size, lr, d_model, n_heads, n_layers],
-            outputs=[loss_img, acc_img, cm_img, metric_info]
-        )
+            train_timexer_btn.click(
+                fn=run_timexer,
+                inputs=[timexer_df_state, lookback, patch_size, epochs, batch_size, lr, d_model, n_heads, n_layers],
+                outputs=[loss_img, acc_img, cm_img, metric_info, model_save_info]
+            )
+
+        with gr.Tab("超参数搜索"):
+            gr.Markdown("## 超参数搜索（Random Search）")
+
+            n_trials = gr.Slider(1, 50, value=10, step=1, label="搜索次数（n_trials）")
+            lookback_slider = gr.Slider(32, 128, value=64, step=32, label="LOOKBACK 候选值")
+            patch_slider = gr.Slider(4, 16, value=8, step=4, label="PATCH_SIZE 候选值")
+            d_model_slider = gr.Slider(64, 256, value=128, step=64, label="d_model 候选值")
+            heads_slider = gr.Slider(2, 6, value=4, step=2, label="n_heads 候选值")
+            layers_slider = gr.Slider(1, 3, value=2, step=1, label="n_layers 候选值")
+            batch_slider = gr.Slider(32, 128, value=64, step=32, label="batch_size 候选值")
+            lr_min = gr.Number(label="学习率最小值", value=1e-4)
+            lr_max = gr.Number(label="学习率最大值", value=1e-2)
+
+            search_btn = gr.Button("开始搜索最佳超参数")
+            search_output = gr.Textbox(label="搜索结果（最佳参数+得分）")
+
+            def run_timexer_search(df, n_trials,
+                                lookback_slider, patch_slider, d_model_slider,
+                                heads_slider, layers_slider, batch_slider,
+                                lr_min, lr_max):
+                if df is None or not isinstance(df, pd.DataFrame):
+                    return "❌ 请先加载合法 CSV 数据"
+                from timexer import random_search_timexer
+                import numpy as np
+
+                param_grid = {
+                    "lookback": [int(lookback_slider)],
+                    "patch_size": [int(patch_slider)],
+                    "d_model": [int(d_model_slider)],
+                    "n_heads": [int(heads_slider)],
+                    "n_layers": [int(layers_slider)],
+                    "batch_size": [int(batch_slider)],
+                    "lr": list(np.linspace(float(lr_min), float(lr_max), num=5))
+                }
+
+                best_params, best_score = random_search_timexer(df, param_grid, int(n_trials))
+                return f"最佳得分: {best_score:.4f}\n最佳参数:\n{json.dumps(best_params, indent=2)}"
+
+            search_btn.click(
+                fn=run_timexer_search,
+                inputs=[timexer_df_state, n_trials,
+                        lookback_slider, patch_slider, d_model_slider,
+                        heads_slider, layers_slider, batch_slider,
+                        lr_min, lr_max],
+                outputs=[search_output]
+            )
+
