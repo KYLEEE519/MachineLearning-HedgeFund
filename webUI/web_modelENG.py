@@ -31,7 +31,7 @@ df_csv = None    # 加载的 CSV 数据
 def load_csv(csv_path):
     global df_csv
     if not os.path.exists(csv_path):
-        return "路径不存在，请检查！", "", gr.update(choices=[]), gr.update(choices=[])
+        return "Load Data Failed，Check Load CSV File", "", gr.update(choices=[]), gr.update(choices=[])
 
     df_csv = pd.read_csv(csv_path)
     cols = df_csv.columns.tolist()
@@ -215,7 +215,7 @@ def hyperparameter_search(feature_cols, target_col, n_iter,
                           alpha_min, alpha_max, alpha_step):
     global df_csv
     if df_csv is None or df_csv.empty:
-        return "未Load Data，请先Load CSV 文件"
+        return "Fail to Load Data，Please Load CSV File First"
 
     df = df_csv
 
