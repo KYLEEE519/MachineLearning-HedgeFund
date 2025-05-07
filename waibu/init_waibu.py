@@ -180,7 +180,7 @@ class SimulatedExchange:
         # **解包信号**
         direction, _, _, _, exit_signal, exit_ratio = signal  # 只关心 exit_flag 是否需要平仓
 
-        # ---------- 1️⃣ 强制平仓检查 ----------
+        # ---------- 1️强制平仓检查 ----------
         if symbol in self.positions:
             for pos in self.positions[symbol][:]:
                 if pos['direction'] == 1:
@@ -200,7 +200,7 @@ class SimulatedExchange:
                     self.close_position(symbol, pos, eval_price, timestamp)
                     self.positions[symbol].remove(pos)
 
-        # ---------- 2️⃣ 止盈止损检查 ----------
+        # ---------- 2️止盈止损检查 ----------
         if symbol in self.positions:
             for pos in self.positions[symbol][:]:
                 direction = pos['direction']
@@ -219,10 +219,10 @@ class SimulatedExchange:
                         self.close_position(symbol, pos, pos['stop_loss'], timestamp)
                         self.positions[symbol].remove(pos)
 
-        # ---------- 3️⃣ exit_signal 触发的平仓 ----------
+        # ---------- 3exit_signal 触发的平仓 ----------
         if exit_signal != 0 and symbol in self.positions:
             for pos in self.positions[symbol][:]:
-                # 🧠 只平与 exit_signal 对应方向相反的仓位
+                # 只平与 exit_signal 对应方向相反的仓位
                 if pos['direction'] == exit_signal:
                     if exit_ratio < 1.0:
                         partial_size = pos['size'] * exit_ratio
