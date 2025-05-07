@@ -3,7 +3,8 @@ from openai import OpenAI
 import os
 
 # 请确保设置了环境变量 OPENAI_API_KEY，或者直接写在这里（⚠️不推荐硬编码）
-client = OpenAI(api_key=os.getenv("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"))
+# client = OpenAI(api_key=os.getenv("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"))
+client = OpenAI(api_key="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")
 # -------- 第一阶段：翻译用户自然语言为结构化描述 --------
 def translate_user_intent(user_text):
     system_prompt = (
