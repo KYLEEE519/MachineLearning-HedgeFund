@@ -28,7 +28,7 @@ def show_data(days, bar, instId):
 
 
 # =====================================
-# 2. 单指标生成 —— 生成 JSON 参数及参数说明
+# 2. Single Indicator Generation —— 生成 JSON 参数及参数说明
 # =====================================
 def update_param_inputs_json(indicator_name):
     params = indicator_params.get(indicator_name, [])
@@ -38,12 +38,12 @@ def update_param_inputs_json(indicator_name):
     return gr.update(value=json_str, visible=True), "\n".join(doc_lines)
 
 # =====================================
-# 3. 单指标生成 —— 解析 JSON 参数并生成指标
+# 3. Single Indicator Generation —— 解析 JSON 参数并Generate Indicator
 # =====================================
 def add_indicator_json(indicator_name, column, param_json_str):
     global df_cache
     if df_cache is None:
-        return "请先获取数据！", ""
+        return "Please fetch data first!", ""
     if indicator_name not in indicator_registry:
         return "❌ 未找到该指标，请检查输入是否正确！", ""
     try:
@@ -75,12 +75,12 @@ def add_indicator_json(indicator_name, column, param_json_str):
     return df_cache.head().to_markdown(), ", ".join(df_cache.columns.tolist())
 
 # =====================================
-# 4. 批量生成特征 —— 通过 JSON 配置一次性生成多个指标特征
+# 4. Generate Features —— 通过 JSON 配置一次性生成多个指标特征
 # =====================================
 def generate_features_by_json(json_str):
     global df_cache
     if df_cache is None:
-        return "请先获取数据！", ""
+        return "Please fetch data first!", ""
     try:
         feature_config = json.loads(json_str)
     except Exception as e:
@@ -111,7 +111,7 @@ def generate_features_by_json(json_str):
     return df_cache.head().to_markdown(), ", ".join(df_cache.columns.tolist())
 
 # =====================================
-# 5. 自定义指标执行并记录代码
+# 5. Custom Indicator执行并记录代码
 # =====================================
 def run_user_indicator_code(user_code_str):
     global df_cache, custom_indicator_log
@@ -164,13 +164,13 @@ def run_user_indicator_code(user_code_str):
 
             # ✅ 每个指标单独记录一条日志
             operation_log.append({
-                "type": "自定义指标",
+                "type": "Custom Indicator",
                 "indicator": name,
                 "params": "user-defined",
                 "generated_cols": list(renamed_cols.values()),
                 "code": user_code_str
             })
-        return "✅ 自定义指标添加成功！", "", ", ".join(df_cache.columns)
+        return "✅ Custom Indicator添加成功！", "", ", ".join(df_cache.columns)
 
     except Exception as e:
         err_msg = traceback.format_exc()
@@ -178,7 +178,7 @@ def run_user_indicator_code(user_code_str):
 
 
 # =====================================
-# 6. 自定义指标选择（筛选保留）
+# 6. Custom Indicator选择（筛选保留）
 # =====================================
 def filter_custom_indicators(selected):
     global df_cache, custom_indicator_log
@@ -188,10 +188,10 @@ def filter_custom_indicators(selected):
     base_cols = ["timestamp", "open", "high", "low", "close", "vol", "target"]
     all_cols = df_cache.columns.tolist()
 
-    # 自定义指标列
+    # Custom Indicator列
     custom_cols = list(custom_indicator_log.keys())
 
-    # 被选中的自定义指标列 + 非自定义列
+    # 被选中的Custom Indicator列 + 非自定义列
     keep_cols = base_cols + [col for col in all_cols if col not in custom_cols] + selected
 
     # 去重 + 保留存在于 df 中的列
@@ -206,31 +206,31 @@ def filter_custom_indicators(selected):
 
 
 
-# 你可以将这个函数接入 gr.CheckboxGroup，用于在 UI 中让用户筛选要保留的自定义指标。
+# 你可以将这个函数接入 gr.CheckboxGroup，用于在 UI 中让用户筛选要保留的Custom Indicator。
 # =====================================
-# 5. 生成 Target 列
+# 5. Generate Target Column
 # =====================================
 def generate_target(target_type):
     global df_cache
     if df_cache is None:
-        return "请先获取数据！", ""
-    if target_type == "涨跌（1为涨，0为跌）":
-        df_cache['target'] = (df_cache['close'].shift(-1) > df_cache['close']).astype(float)  # 保留 NaN
-    elif target_type == "涨跌幅":
+        return "Please fetch data first!", ""
+    if target_type == "Up/Down (1 = up, 0 = down)":
+        df_cache['target'] = (df_cache['close'].shift(-1) > df_cache['close']).astype(float)
+    elif target_type == "Change Rate":
         df_cache['target'] = df_cache['close'].shift(-1) / df_cache['close'] - 1
     else:
-        return "未知的 target 类型", ""
+        return "Unknown target type", ""
     # 最后一行不需要预测
     df_cache.loc[df_cache.index[-1], 'target'] = None
     return df_cache.head().to_markdown(), ", ".join(df_cache.columns.tolist())
 
 # =====================================
-# 6. 数据清理
+# 6. Data Cleaning
 # =====================================
 def clean_data(clean_type):
     global df_cache
     if df_cache is None:
-        return "请先获取数据！", ""
+        return "Please fetch data first!", ""
     # 替换 inf 和 -inf 为 NaN
     df_cache.replace([float('inf'), float('-inf')], pd.NA, inplace=True)
     # 强制转换（非时间列）为数字
@@ -241,21 +241,21 @@ def clean_data(clean_type):
     # 删除全为 NaN 的列
     na_cols = df_cache.columns[df_cache.isna().all()].tolist()
     df_cache.drop(columns=na_cols, inplace=True)
-    report = f"已删除全为 NaN 的列: {na_cols}\n"
-    if clean_type == "中位数填充":
+    report = f"Deleted columns entirely NaN: {na_cols}\n"
+    if clean_type == "Fill with Median":
         df_cache.fillna(df_cache.median(), inplace=True)
-        report += "已用列的中位数填充 NaN\n"
-    elif clean_type == "均值填充":
+        report += "已用列的Fill with Median NaN\n"
+    elif clean_type == "Fill with Mean":
         df_cache.fillna(df_cache.mean(), inplace=True)
-        report += "已用列的均值填充 NaN\n"
-    elif clean_type == "删除含NaN的行":
+        report += "已用列的Fill with Mean NaN\n"
+    elif clean_type == "Drop Rows with NaN":
         df_cache.dropna(inplace=True)
         df_cache.reset_index(drop=True, inplace=True)
-        report += "已删除包含 NaN 的行\n"
+        report += "Deleted rows with NaN\n"
     else:
-        report += "未知的清理类型\n"
+        report += "Unknown cleaning method\n"
     new_rows = df_cache.shape[0]
-    report += f"\n数据清理前行数: {original_rows} 行，清理后行数: {new_rows} 行"
+    report += f"\nData Cleaning前行数: {original_rows} 行，Row count after cleaning: {new_rows} 行"
     return report + "\n\n" + df_cache.tail().to_markdown(), ", ".join(df_cache.columns.tolist())
 
 # =====================================
@@ -264,7 +264,7 @@ def clean_data(clean_type):
 def save_data(instId):
     global df_cache, df_timestamp, operation_log
     if df_cache is None:
-        return "请先获取数据！"
+        return "Please fetch data first!"
 
     save_dir = "./data"
     os.makedirs(save_dir, exist_ok=True)
@@ -281,55 +281,55 @@ def save_data(instId):
             f.write(f"--- Step {i} ---\n")
             for k, v in op.items():
                 if k == "code":
-                    f.write(f"\n用户自定义代码:\n{v}\n")
+                    f.write(f"\nUser-defined Code:\n{v}\n")
                 else:
                     f.write(f"{k}: {json.dumps(v, ensure_ascii=False, indent=4)}\n")
             f.write("\n")
 
-    return f"数据已保存至:\nCSV: {os.path.abspath(csv_path)}\nTXT: {os.path.abspath(txt_path)}"
+    return f"Data saved to:\nCSV: {os.path.abspath(csv_path)}\nTXT: {os.path.abspath(txt_path)}"
 
 
 def build_data_process_ui():
-    with gr.Tab("数据处理与特征工程"):
-        gr.Markdown("可视化训练工具")
+    with gr.Tab("Data Processing & Feature Engineering"):
+        gr.Markdown("Visual Training Tool")
         
         # ----- 数据获取 -----
         with gr.Row():
-            days = gr.Number(label="获取最近几天数据（days）", info="例如7表示最近7天")
-            bar = gr.Textbox(label="K线粒度（bar）", info="例如1m、5m、1H、4H")
-            instId = gr.Textbox(label="交易对（instId）", info="例如BTC-USDT")
+            days = gr.Number(label="Fetch Days of Data", info="例如7表示最近7天")
+            bar = gr.Textbox(label="K-line Interval (bar)", info="例如1m、5m、1H、4H")
+            instId = gr.Textbox(label="Trading Pair (instId)", info="例如BTC-USDT")
         data_info = gr.Markdown()
-        all_columns = gr.Markdown(label="全部列名")
-        load_button = gr.Button("获取并展示数据")
+        all_columns = gr.Markdown(label="All Columns")
+        load_button = gr.Button("Fetch and Display Data")
         load_button.click(fn=show_data, inputs=[days, bar, instId], outputs=[data_info, all_columns])
         
-        # ----- 单指标生成 -----
-        with gr.Tab("单指标生成"):
-            gr.Markdown("## 单指标生成")
-            indicator_name = gr.Dropdown(choices=list(indicator_registry.keys()), label="选择指标")
-            column = gr.Textbox(label="作用列", value="close")
-            confirm_param_button = gr.Button("确认生成参数输入框")
-            json_params = gr.Textbox(label="请在此输入指标参数（JSON 格式）", visible=False, lines=10)
+        # ----- Single Indicator Generation -----
+        with gr.Tab("Single Indicator Generation"):
+            gr.Markdown("## Single Indicator Generation")
+            indicator_name = gr.Dropdown(choices=list(indicator_registry.keys()), label="Select Indicator")
+            column = gr.Textbox(label="Target Column", value="close")
+            confirm_param_button = gr.Button("Generate Parameter Input")
+            json_params = gr.Textbox(label="Enter Indicator Parameters (JSON Format)", visible=False, lines=10)
             # Markdown 组件，用于显示参数说明（instruction）
-            param_instructions = gr.Markdown(label="参数说明")
+            param_instructions = gr.Markdown(label="Parameter Instructions")
             confirm_param_button.click(
                 fn=update_param_inputs_json,
                 inputs=[indicator_name],
                 outputs=[json_params, param_instructions]
             )
-            # new_col_name = gr.Textbox(label="新列名（可选）")
-            add_indicator_button = gr.Button("生成指标")
+            # new_col_name = gr.Textbox(label="New Column Name (Optional)")
+            add_indicator_button = gr.Button("Generate Indicator")
             add_indicator_button.click(
                 fn=add_indicator_json,
                 inputs=[indicator_name, column, json_params],
                 outputs=[data_info, all_columns]
             )
         
-        # ----- 批量生成特征 -----
-        with gr.Tab("批量生成指标"):
-            gr.Markdown("## 编辑 JSON 自动批量生成特征")
+        # ----- Generate Features -----
+        with gr.Tab("批量Generate Indicator"):
+            gr.Markdown("## Auto-generate Features from JSON")
             json_editor = gr.Code(
-                label="指标配置 JSON", language="json",
+                label="Indicator Config JSON", language="json",
                 value='''{
             "RSI": {"enable": true, "params": {"window": 14}},
             "MACD": {"enable": true, "params": {"window_fast": 12, "window_slow": 26, "window_sign": 9}},
@@ -344,17 +344,17 @@ def build_data_process_ui():
             }'''
             )
             new_data_info = gr.Markdown()
-            new_all_columns = gr.Markdown(label="最新全部列名")
-            generate_button = gr.Button("批量生成特征")
+            new_all_columns = gr.Markdown(label="Updated Column List")
+            generate_button = gr.Button("Generate Features")
             generate_button.click(
                 fn=generate_features_by_json,
                 inputs=[json_editor],
                 outputs=[new_data_info, new_all_columns]
             )
-        with gr.Tab("自定义指标"):
-            gr.Markdown("## 自定义指标生成\n请使用 `@register_indicator(\"名称\")` 装饰器定义函数，返回新的 DataFrame。")
+        with gr.Tab("Custom Indicator"):
+            gr.Markdown("## Custom Indicator生成\n请使用 `@register_indicator(\"名称\")` 装饰器定义函数，返回新的 DataFrame。")
 
-            example_code = '''# ✅ 示例模板：
+            example_code = '''# ✅ Example Template：
 @register_indicator("Stoch")
 def calculate_stoch(df, column='close', window=14):
     stoch = ta.momentum.StochasticOscillator(
@@ -362,11 +362,11 @@ def calculate_stoch(df, column='close', window=14):
     df[f'Stoch_{window}'] = stoch.stoch()
     return df'''
 
-            user_code = gr.Code(label="自定义指标代码", language="python", value=example_code)
-            run_button = gr.Button("运行自定义指标")
+            user_code = gr.Code(label="Custom Indicator Code", language="python", value=example_code)
+            run_button = gr.Button("运行Custom Indicator")
 
             error_display = gr.Markdown()
-            df_column_list = gr.Markdown(label="当前全部列名")
+            df_column_list = gr.Markdown(label="Current Columns")
 
             run_button.click(
                 fn=run_user_indicator_code,
@@ -374,53 +374,53 @@ def calculate_stoch(df, column='close', window=14):
                 outputs=[error_display, df_column_list]
             )
 
-        with gr.Tab("自定义指标选择"):
-            gr.Markdown("## 选择保留的自定义指标列")
-            selectable_cols = gr.CheckboxGroup(choices=[], label="可选自定义指标列")
+        with gr.Tab("Custom Indicator选择"):
+            gr.Markdown("## 选择保留的Custom Indicator列")
+            selectable_cols = gr.CheckboxGroup(choices=[], label="Selectable Custom Columns")
             preview_filtered = gr.Markdown()
-            updated_columns = gr.Markdown(label="最新列名")
+            updated_columns = gr.Markdown(label="Updated Columns")
 
             def update_selectable_cols():
                 from web_data import custom_indicator_log
                 return gr.update(choices=list(custom_indicator_log.keys()))
 
-            refresh_button = gr.Button("🔄 刷新可选指标列表")
+            refresh_button = gr.Button("🔄 Refresh Selectable Columns")
             refresh_button.click(fn=update_selectable_cols, inputs=[], outputs=[selectable_cols])
 
-            apply_filter_button = gr.Button("✅ 应用筛选")
+            apply_filter_button = gr.Button("✅ Apply Filter")
             apply_filter_button.click(
                 fn=filter_custom_indicators,
                 inputs=[selectable_cols],
                 outputs=[preview_filtered, updated_columns]
             )
 
-        # ----- 生成 Target 列 -----
-        gr.Markdown("## 生成 Target 列")
-        target_type = gr.Dropdown(choices=["涨跌（1为涨，0为跌）", "涨跌幅"], label="选择 Target 类型")
+        # ----- Generate Target Column -----
+        gr.Markdown("## Generate Target Column")
+        target_type = gr.Dropdown(choices=["Up/Down (1 = up, 0 = down)", "Change Rate"], label="Select Target Type")
         target_data_info = gr.Markdown()
-        target_all_columns = gr.Markdown(label="最新全部列名")
-        generate_target_button = gr.Button("生成 Target 列")
+        target_all_columns = gr.Markdown(label="Updated Column List")
+        generate_target_button = gr.Button("Generate Target Column")
         generate_target_button.click(
             fn=generate_target,
             inputs=[target_type],
             outputs=[target_data_info, target_all_columns]
         )
         
-        # ----- 数据清理 -----
-        gr.Markdown("## 数据清理")
-        clean_type = gr.Dropdown(choices=["中位数填充", "均值填充", "删除含NaN的行"], label="选择数据清理方式")
+        # ----- Data Cleaning -----
+        gr.Markdown("## Data Cleaning")
+        clean_type = gr.Dropdown(choices=["Fill with Median", "Fill with Mean", "Drop Rows with NaN"], label="选择Data Cleaning方式")
         clean_info = gr.Markdown()
-        clean_cols = gr.Markdown(label="最新全部列名")
-        clean_button = gr.Button("执行数据清理")
+        clean_cols = gr.Markdown(label="Updated Column List")
+        clean_button = gr.Button("执行Data Cleaning")
         clean_button.click(
             fn=clean_data,
             inputs=[clean_type],
             outputs=[clean_info, clean_cols]
         )
-        gr.Markdown("## 数据保存")
+        gr.Markdown("## Save Data")
 
         save_path_info = gr.Markdown()
-        save_button = gr.Button("保存数据为 CSV")
+        save_button = gr.Button("Save Data as CSV")
 
         save_button.click(
             fn=save_data,

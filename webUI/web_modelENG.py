@@ -31,7 +31,7 @@ df_csv = None    # 加载的 CSV 数据
 def load_csv(csv_path):
     global df_csv
     if not os.path.exists(csv_path):
-        return "路径不存在，请检查！", "", gr.update(choices=[]), gr.update(choices=[])
+        return "Load Data Failed，Check Load CSV File", "", gr.update(choices=[]), gr.update(choices=[])
 
     df_csv = pd.read_csv(csv_path)
     cols = df_csv.columns.tolist()
@@ -64,39 +64,39 @@ def load_csv(csv_path):
 #         if not pd.api.types.is_numeric_dtype(df[col]):
 #             return False, f"特征列 {col} 存在非数值类型数据"
 
-#     return True, "数据检查通过"
+#     return True, "Data Validation通过"
 
-# 检查数据合法性函数
+# Validate Data函数
 def check_data_validity(feature_cols, target_col):
     global df_csv
     if df_csv is None or df_csv.empty:
-        return "❌ 未加载数据，请先读取 CSV 文件"
+        return "❌ Fail to Load Data，Please Load CSV File First！"
 
     df = df_csv
 
     # 检查目标列
     if target_col not in df.columns:
-        return f"❌ 目标列 {target_col} 不存在，请检查！"
+        return f"❌ Target column {target_col} does not exist"
 
     # 检查特征列
     missing_cols = [col for col in feature_cols if col not in df.columns]
     if missing_cols:
-        return f"❌ 以下特征列不存在: {missing_cols}"
+        return f"❌ Missling Columns: {missing_cols}"
 
     # 检查特征列是否全为数值型
     non_numeric_cols = df[feature_cols].select_dtypes(exclude=["number"]).columns.tolist()
     if non_numeric_cols:
-        return f"❌ 以下特征列存在非数值类型数据，仅支持数值特征: {non_numeric_cols}"
+        return f"❌ The following feature columns have non-numeric data types and only support numeric features: {non_numeric_cols}"
 
     # 检查 target 列类别数
     unique_num = df[target_col].nunique()
     if unique_num < 2:
-        return f"❌ 目标列 {target_col} 类别数不足，仅有 {unique_num} 类"
+        return f"❌ Target column {target_col} no enough classes，only contain {unique_num} "
 
     if unique_num > 10:
-        return f"❌ 目标列 {target_col} 类别数过多，有 {unique_num} 类，不推荐"
+        return f"❌ Target column {target_col} too many classes，contain {unique_num} ，please check!"
 
-    return "✅ 数据检查通过！"
+    return "✅ Data Validation Pass！"
 
 
 def train_model(feature_cols, target_col,
@@ -104,7 +104,7 @@ def train_model(feature_cols, target_col,
                 subsample, colsample_bytree, gamma, reg_lambda, reg_alpha):
     global df_csv
     if df_csv is None or df_csv.empty:
-        raise ValueError("未加载数据，请先读取 CSV 文件")
+        raise ValueError("Load Data Failed，Check Load CSV File")
 
     df = df_csv
     
@@ -215,7 +215,7 @@ def hyperparameter_search(feature_cols, target_col, n_iter,
                           alpha_min, alpha_max, alpha_step):
     global df_csv
     if df_csv is None or df_csv.empty:
-        return "未加载数据，请先读取 CSV 文件"
+        return "Fail to Load Data，Please Load CSV File First"
 
     df = df_csv
 
@@ -266,56 +266,56 @@ def hyperparameter_search(feature_cols, target_col, n_iter,
     best_params = search.best_params_
     best_score = search.best_score_
 
-    return f"超参数搜索完毕！\n\n最佳参数:\n{json.dumps(best_params, indent=4)}\n\n最佳得分: {best_score:.4f}"
+    return f"Hyperparameter Tuning Finished！\n\nBest Settings:\n{json.dumps(best_params, indent=4)}\n\nBest Score: {best_score:.4f}"
 
 def build_model_train_ui():
-    with gr.Tab("XGBoost 训练"):
-        gr.Markdown("# XGBoost 可视化训练")
+    with gr.Tab("XGBoost Training"):
+        gr.Markdown("# XGBoost Visual Training")
 
-        csv_path = gr.Textbox(label="输入 CSV 文件绝对路径")
-        load_csv_button = gr.Button("读取 CSV")
+        csv_path = gr.Textbox(label="Enter CSV File Path")
+        load_csv_button = gr.Button("Load CSV")
 
         data_info = gr.Markdown()
-        all_columns = gr.Markdown(label="全部列名")
+        all_columns = gr.Markdown(label="All Columns")
 
-        feature_cols = gr.Dropdown(choices=[], label="选择特征列(可多选)", multiselect=True)
-        target_col = gr.Dropdown(choices=[], label="选择目标列(单选)", multiselect=False)
+        feature_cols = gr.Dropdown(choices=[], label="Select feature columns (multiple selectable)", multiselect=True)
+        target_col = gr.Dropdown(choices=[], label="Selection of target columns (radio)", multiselect=False)
 
         load_csv_button.click(
                         fn=load_csv,
                         inputs=[csv_path],
                         outputs=[data_info, all_columns, feature_cols, target_col]
                     )
-        gr.Markdown("## 数据检查")
+        gr.Markdown("## Data Validation")
 
         check_info = gr.Markdown()  # 显示检查结果
-        check_button = gr.Button("检查数据合法性")
+        check_button = gr.Button("Validate Data")
 
         check_button.click(
             fn=check_data_validity,
             inputs=[feature_cols, target_col],
             outputs=[check_info]
         )
-        with gr.Tab("模型训练"):
-            with gr.Tab("手动调整参数"):
-                gr.Markdown("### 模型参数设置")
+        with gr.Tab("Model Training"):
+            with gr.Tab("Manual Parameter Tuning"):
+                gr.Markdown("### Model Parameters")
 
-                learning_rate = gr.Slider(0.001, 1.0, 0.1, step=0.001, label="学习率")
-                n_estimators = gr.Slider(10, 500, 50, step=10, label="迭代次数")
-                max_depth = gr.Slider(1, 15, 3, step=1, label="最大深度")
-                subsample = gr.Slider(0.6, 0.9, 0.8, step=0.1, label="subsample（行采样比例）")
-                colsample_bytree = gr.Slider(0.6, 1.0, 0.8, step=0.1, label="colsample_bytree（列采样比例）")
-                gamma = gr.Slider(0.0, 0.5, 0.1, step=0.1, label="gamma（最小损失减少）")
-                reg_lambda = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="reg_lambda（L2 正则）")
-                reg_alpha = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="reg_alpha（L1 正则）")
+                learning_rate = gr.Slider(0.001, 1.0, 0.1, step=0.001, label="Learning Rate")
+                n_estimators = gr.Slider(10, 500, 50, step=10, label="Number of Estimators")
+                max_depth = gr.Slider(1, 15, 3, step=1, label="Maximum Depth")
+                subsample = gr.Slider(0.6, 0.9, 0.8, step=0.1, label="Subsample (Row Sampling)")
+                colsample_bytree = gr.Slider(0.6, 1.0, 0.8, step=0.1, label="Colsample by Tree")
+                gamma = gr.Slider(0.0, 0.5, 0.1, step=0.1, label="Gamma (Min Loss Reduction)")
+                reg_lambda = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="Reg Lambda (L2)")
+                reg_alpha = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="Reg Alpha (L1)")
 
-                train_button = gr.Button("开始训练")
+                train_button = gr.Button("Train Model")
 
-                loss_img = gr.Image(label="Train vs Val Loss 曲线")
-                importance_img = gr.Image(label="特征重要性图")
-                acc = gr.Textbox(label="验证集评估指标")
-                save_info = gr.Textbox(label="模型保存信息")
-                roc_img = gr.Image(label="ROC 曲线图（分类任务）")
+                loss_img = gr.Image(label="Train vs Val Loss Curve")
+                importance_img = gr.Image(label="Feature Importance Plot")
+                acc = gr.Textbox(label="Validation Evaluation Metrics")
+                save_info = gr.Textbox(label="Model Save Info")
+                roc_img = gr.Image(label="ROC Curve (Classification)")
 
                 train_button.click(
                     fn=train_model,
@@ -326,10 +326,10 @@ def build_model_train_ui():
                     ],
                     outputs=[loss_img, importance_img, acc, save_info, roc_img]
                 )
-            with gr.Tab("通过json调整参数"):
-                gr.Markdown("### 使用 JSON 输入训练参数")
+            with gr.Tab("Train via JSON Parameters"):
+                gr.Markdown("### Train Using JSON Parameters")
 
-                json_input = gr.Code(label="输入参数 JSON", language="json", value='''{
+                json_input = gr.Code(label="Parameter JSON", language="json", value='''{
                 "subsample": 0.6,
                 "reg_lambda": 1.0,
                 "reg_alpha": 0.0,
@@ -340,13 +340,13 @@ def build_model_train_ui():
                 "colsample_bytree": 0.6
             }''')
 
-                json_train_button = gr.Button("使用 JSON 参数开始训练")
+                json_train_button = gr.Button("使用 JSON 参数Train Model")
 
-                json_loss_img = gr.Image(label="Train vs Val Loss 曲线")
-                json_importance_img = gr.Image(label="特征重要性图")
-                json_acc = gr.Textbox(label="验证集评估指标")
-                json_save_info = gr.Textbox(label="模型保存信息")
-                json_roc_img = gr.Image(label="ROC 曲线图（分类任务）")
+                json_loss_img = gr.Image(label="Train vs Val Loss Curve")
+                json_importance_img = gr.Image(label="Feature Importance Plot")
+                json_acc = gr.Textbox(label="Validation Evaluation Metrics")
+                json_save_info = gr.Textbox(label="Model Save Info")
+                json_roc_img = gr.Image(label="ROC Curve (Classification)")
 
                 def train_with_json_params(params_json, feature_cols, target_col):
                     try:
@@ -378,51 +378,51 @@ def build_model_train_ui():
                 )
 
 
-        with gr.Tab("超参数搜索"):
-            gr.Markdown("# XGBoost 超参数搜索（RandomizedSearchCV）")
+        with gr.Tab("Hyperparameter Tuning"):
+            gr.Markdown("# XGBoost Hyperparameter Tuning（RandomizedSearchCV）")
 
 
 
-            gr.Markdown("### 超参数范围设置（最大范围固定，可缩小范围 & 调整步长）")
+            gr.Markdown("### Set Hyperparameter Ranges")
 
             # 每个超参数范围设置
-            lr_min = gr.Slider(0.001, 1.0, 0.001, step=0.001, label="learning_rate 最小值")
-            lr_max = gr.Slider(0.001, 1.0, 0.1, step=0.001, label="learning_rate 最大值")
-            lr_step = gr.Slider(0.001, 1.0, 0.001, step=0.001, label="learning_rate 步长")
+            lr_min = gr.Slider(0.001, 1.0, 0.001, step=0.001, label="learning_rate Min")
+            lr_max = gr.Slider(0.001, 1.0, 0.1, step=0.001, label="learning_rate Max")
+            lr_step = gr.Slider(0.001, 1.0, 0.001, step=0.001, label="learning_rate Step")
 
-            n_min = gr.Slider(10, 500, 10, step=10, label="n_estimators 最小值")
-            n_max = gr.Slider(10, 500, 100, step=10, label="n_estimators 最大值")
-            n_step = gr.Slider(10, 500, 10, step=10, label="n_estimators 步长")
+            n_min = gr.Slider(10, 500, 10, step=10, label="n_estimators Min")
+            n_max = gr.Slider(10, 500, 100, step=10, label="n_estimators Max")
+            n_step = gr.Slider(10, 500, 10, step=10, label="n_estimators Step")
 
-            depth_min = gr.Slider(1, 15, 1, step=1, label="max_depth 最小值")
-            depth_max = gr.Slider(1, 15, 3, step=1, label="max_depth 最大值")
-            depth_step = gr.Slider(1, 15, 1, step=1, label="max_depth 步长")
+            depth_min = gr.Slider(1, 15, 1, step=1, label="max_depth Min")
+            depth_max = gr.Slider(1, 15, 3, step=1, label="max_depth Max")
+            depth_step = gr.Slider(1, 15, 1, step=1, label="max_depth Step")
 
-            subsample_min = gr.Slider(0.6, 0.9, 0.6, step=0.1, label="subsample 最小值")
-            subsample_max = gr.Slider(0.6, 0.9, 0.8, step=0.1, label="subsample 最大值")
-            subsample_step = gr.Slider(0.1, 0.3, 0.1, step=0.1, label="subsample 步长")
+            subsample_min = gr.Slider(0.6, 0.9, 0.6, step=0.1, label="subsample Min")
+            subsample_max = gr.Slider(0.6, 0.9, 0.8, step=0.1, label="subsample Max")
+            subsample_step = gr.Slider(0.1, 0.3, 0.1, step=0.1, label="subsample Step")
 
-            colsample_min = gr.Slider(0.6, 1.0, 0.6, step=0.1, label="colsample_bytree 最小值")
-            colsample_max = gr.Slider(0.6, 1.0, 0.8, step=0.1, label="colsample_bytree 最大值")
-            colsample_step = gr.Slider(0.1, 0.3, 0.1, step=0.1, label="colsample_bytree 步长")
+            colsample_min = gr.Slider(0.6, 1.0, 0.6, step=0.1, label="colsample_bytree Min")
+            colsample_max = gr.Slider(0.6, 1.0, 0.8, step=0.1, label="colsample_bytree Max")
+            colsample_step = gr.Slider(0.1, 0.3, 0.1, step=0.1, label="colsample_bytree Step")
 
-            gamma_min = gr.Slider(0.0, 0.5, 0.0, step=0.1, label="gamma 最小值")
-            gamma_max = gr.Slider(0.0, 0.5, 0.1, step=0.1, label="gamma 最大值")
-            gamma_step = gr.Slider(0.1, 0.3, 0.1, step=0.1, label="gamma 步长")
+            gamma_min = gr.Slider(0.0, 0.5, 0.0, step=0.1, label="gamma Min")
+            gamma_max = gr.Slider(0.0, 0.5, 0.1, step=0.1, label="gamma Max")
+            gamma_step = gr.Slider(0.1, 0.3, 0.1, step=0.1, label="gamma Step")
 
-            lambda_min = gr.Slider(0.0, 10.0, 0.0, step=0.5, label="reg_lambda 最小值")
-            lambda_max = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="reg_lambda 最大值")
-            lambda_step = gr.Slider(0.5, 5.0, 0.5, step=0.5, label="reg_lambda 步长")
+            lambda_min = gr.Slider(0.0, 10.0, 0.0, step=0.5, label="reg_lambda Min")
+            lambda_max = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="reg_lambda Max")
+            lambda_step = gr.Slider(0.5, 5.0, 0.5, step=0.5, label="reg_lambda Step")
 
-            alpha_min = gr.Slider(0.0, 10.0, 0.0, step=0.5, label="reg_alpha 最小值")
-            alpha_max = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="reg_alpha 最大值")
-            alpha_step = gr.Slider(0.5, 5.0, 0.5, step=0.5, label="reg_alpha 步长")
+            alpha_min = gr.Slider(0.0, 10.0, 0.0, step=0.5, label="reg_alpha Min")
+            alpha_max = gr.Slider(0.0, 10.0, 1.0, step=0.5, label="reg_alpha Max")
+            alpha_step = gr.Slider(0.5, 5.0, 0.5, step=0.5, label="reg_alpha Step")
 
-            n_iter = gr.Slider(5, 100, 20, step=1, label="采样超参数组合的次数")
+            n_iter = gr.Slider(5, 100, 20, step=1, label="Number of Parameter Samples")
 
-            search_result = gr.Markdown(label="搜索结果")
+            search_result = gr.Markdown(label="Search Results")
 
-            search_button = gr.Button("开始超参数搜索")
+            search_button = gr.Button("开始Hyperparameter Tuning")
 
             # 按钮逻辑
             search_button.click(
@@ -441,18 +441,18 @@ def build_model_train_ui():
                 outputs=[search_result]
             )
 
-    with gr.Tab("TimeXer 模型训练"):
-        gr.Markdown("# TimeXer 模型 - 基于 Transformer 的涨跌预测")
+    with gr.Tab("TimeXer Model Training"):
+        gr.Markdown("# TimeXer - Transformer-based Price Movement Prediction")
 
         # ===== CSV 数据输入 =====
-        timexer_csv_path = gr.Textbox(label="输入 CSV 文件路径（含所有特征+target）")
-        timexer_load_btn = gr.Button("加载数据")
+        timexer_csv_path = gr.Textbox(label="CSV Path (with features + target)")
+        timexer_load_btn = gr.Button("Load Data")
 
-        timexer_data_preview = gr.Markdown(label="预览数据")
+        timexer_data_preview = gr.Markdown(label="Data Preview")
 
         def load_csv_for_timexer(path):
             if not os.path.exists(path):
-                return "路径不存在，请检查！", None
+                return "File not Detected, Please Check！", None
             df = pd.read_csv(path)
             return df.head().to_markdown(), df
 
@@ -460,33 +460,33 @@ def build_model_train_ui():
         timexer_load_btn.click(fn=load_csv_for_timexer, inputs=[timexer_csv_path],
                             outputs=[timexer_data_preview, timexer_df_state])
 
-        # ===== 模型参数设置 =====
-        with gr.Tab("模型参数设置"):
-            gr.Markdown("## 模型参数设置")
+        # ===== Model Parameters =====
+        with gr.Tab("Model Parameters"):
+            gr.Markdown("## Model Parameters")
             with gr.Row():
-                lookback = gr.Slider(16, 128, value=64, step=8, label="LOOKBACK 序列长度")
+                lookback = gr.Slider(16, 128, value=64, step=8, label="LOOKBACK Sequence Length")
                 patch_size = gr.Slider(4, 32, value=8, step=4, label="PATCH_SIZE")
                 d_model = gr.Slider(32, 256, value=128, step=32, label="d_model (Transformer hidden dim)")
             with gr.Row():
-                n_heads = gr.Slider(1, 8, value=4, step=1, label="多头注意力头数")
-                n_layers = gr.Slider(1, 6, value=2, step=1, label="Transformer 层数")
-                dropout = gr.Slider(0.0, 0.5, value=0.2, step=0.05, label="Dropout 比例")
+                n_heads = gr.Slider(1, 8, value=4, step=1, label="Number of Attention Heads")
+                n_layers = gr.Slider(1, 6, value=2, step=1, label="Transformer Layers")
+                dropout = gr.Slider(0.0, 0.5, value=0.2, step=0.05, label="Dropout Ratio")
             with gr.Row():
-                epochs = gr.Slider(1, 50, value=10, step=1, label="训练轮数 (Epochs)")
+                epochs = gr.Slider(1, 50, value=10, step=1, label="Number of Rows (Epochs)")
                 batch_size = gr.Slider(16, 256, value=64, step=16, label="Batch Size")
-                lr = gr.Slider(1e-5, 1e-2, value=1e-3, step=1e-5, label="学习率")
+                lr = gr.Slider(1e-5, 1e-2, value=1e-3, step=1e-5, label="Learning Rate")
 
-            train_timexer_btn = gr.Button("开始训练 TimeXer 模型")
+            train_timexer_btn = gr.Button("Train Model TimeXer Model")
 
-            loss_img = gr.Image(label="Loss 曲线")
-            acc_img = gr.Image(label="Accuracy 曲线")
-            cm_img = gr.Image(label="混淆矩阵")
-            metric_info = gr.Textbox(label="最终指标 (Acc / Prec / Rec)")
-            model_save_info = gr.Textbox(label="模型保存路径")
+            loss_img = gr.Image(label="Loss Curve")
+            acc_img = gr.Image(label="Accuracy Curve")
+            cm_img = gr.Image(label="Confusion Matrix")
+            metric_info = gr.Textbox(label="Final Label (Acc / Prec / Rec)")
+            model_save_info = gr.Textbox(label="Model Save Path")
 
             def run_timexer(df, lookback, patch_size, epochs, batch_size, lr, d_model, n_heads, n_layers, dropout):
                 if df is None or not isinstance(df, pd.DataFrame):
-                    return None, None, None, "请先加载合法的 CSV 数据", ""
+                    return None, None, None, "Please load CSV data first", ""
                 return train_timexer_model(df,
                                         lookback=int(lookback),
                                         patch_size=int(patch_size),
@@ -504,32 +504,32 @@ def build_model_train_ui():
                 outputs=[loss_img, acc_img, cm_img, metric_info, model_save_info]
             )
 
-        # ===== 超参数搜索 =====
-        with gr.Tab("超参数搜索"):
-            gr.Markdown("## 超参数搜索（Random Search）")
+        # ===== Hyperparameter Tuning =====
+        with gr.Tab("Hyperparameter Tuning"):
+            gr.Markdown("## Hyperparameter Tuning（Random Search）")
 
-            n_trials = gr.Slider(1, 50, value=10, step=1, label="搜索次数（n_trials）")
+            n_trials = gr.Slider(1, 50, value=10, step=1, label="Number of Trials (n_trials)")
 
-            lookback_list = gr.Textbox(label="LOOKBACK 候选列表", value="[32, 64, 96, 128]")
-            patch_list = gr.Textbox(label="PATCH_SIZE 候选列表", value="[4, 8, 12, 16]")
-            d_model_list = gr.Textbox(label="d_model 候选列表", value="[64, 128, 256]")
-            heads_list = gr.Textbox(label="n_heads 候选列表", value="[2, 4, 6]")
-            layers_list = gr.Textbox(label="n_layers 候选列表", value="[1, 2, 3]")
-            batch_list = gr.Textbox(label="batch_size 候选列表", value="[32, 64, 128]")
-            dropout_list = gr.Textbox(label="dropout 候选列表", value="[0.1, 0.2, 0.3]")
+            lookback_list = gr.Textbox(label="LOOKBACK Candidate List", value="[32, 64, 96, 128]")
+            patch_list = gr.Textbox(label="PATCH_SIZE Candidate List", value="[4, 8, 12, 16]")
+            d_model_list = gr.Textbox(label="d_model Candidate List", value="[64, 128, 256]")
+            heads_list = gr.Textbox(label="n_heads Candidate List", value="[2, 4, 6]")
+            layers_list = gr.Textbox(label="n_layers Candidate List", value="[1, 2, 3]")
+            batch_list = gr.Textbox(label="batch_size Candidate List", value="[32, 64, 128]")
+            dropout_list = gr.Textbox(label="dropout Candidate List", value="[0.1, 0.2, 0.3]")
 
-            lr_min = gr.Number(label="学习率最小值", value=1e-4)
-            lr_max = gr.Number(label="学习率最大值", value=1e-2)
+            lr_min = gr.Number(label="Learning RateMin", value=1e-4)
+            lr_max = gr.Number(label="Learning RateMax", value=1e-2)
 
-            search_btn = gr.Button("开始搜索最佳超参数")
-            search_output = gr.Textbox(label="搜索结果（最佳参数+得分）")
+            search_btn = gr.Button("Search Best Hyperparameters")
+            search_output = gr.Textbox(label="Search Results（Best Settings+Score）")
 
             def run_timexer_search(df, n_trials,
                                 lookback_list, patch_list, d_model_list,
                                 heads_list, layers_list, batch_list, dropout_list,
                                 lr_min, lr_max):
                 if df is None or not isinstance(df, pd.DataFrame):
-                    return "❌ 请先加载合法 CSV 数据"
+                    return "❌ Please Load CSV Data First"
                 from timexer import random_search_timexer
                 import numpy as np
 
@@ -545,10 +545,10 @@ def build_model_train_ui():
                         "lr": list(np.linspace(float(lr_min), float(lr_max), num=5))
                     }
                 except Exception as e:
-                    return f"❌ JSON 解析失败: {e}"
+                    return f"❌ JSON Analysis Failed: {e}"
 
                 best_params, best_score = random_search_timexer(df, param_grid, int(n_trials))
-                return f"✅ 最佳得分: {best_score:.4f}\n\n最佳参数:\n{json.dumps(best_params, indent=2)}"
+                return f"✅ Best Score: {best_score:.4f}\n\nBest Settings:\n{json.dumps(best_params, indent=2)}"
 
             search_btn.click(
                 fn=run_timexer_search,

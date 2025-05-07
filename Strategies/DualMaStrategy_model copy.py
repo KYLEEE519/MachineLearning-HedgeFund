@@ -1,47 +1,51 @@
 import pandas as pd
-import torch
-import numpy as np
 import ta
-import json
-import os
 import pickle
-
+import numpy as np
 
 
 class DualMaStrategy_model:
     def __init__(self,
                  df: pd.DataFrame,
-                 model_path: str = None,
-                 fast_ma: int = 5,
-                 slow_ma: int = 10,
-                 position_ratio: float = 0.7,
-                 tp_rate: float = 0.03,
-                 sl_rate: float = 0.01):
+                 fast_ma: int=5,
+                 slow_ma: int=10,
+                 position_ratio: float=0.7,
+                 tp_rate: float=0.03,
+                 sl_rate: float=0.01):
+        """
+        参数:
+          - fast_ma: 快速均线周期
+          - slow_ma: 慢速均线周期
+          - position_ratio: 开仓所用资金比例
+          - tp_rate: 止盈比例
+          - sl_rate: 止损比例
+          - model_path: pkl 模型路径
+          - feature_cols: 特征列名列表 (必须和模型训练时一致)
+        """
         self.df = df.copy()
         self.fast_ma = fast_ma
         self.slow_ma = slow_ma
         self.position_ratio = position_ratio
         self.tp_rate = tp_rate
         self.sl_rate = sl_rate
-        self.model_path = model_path or self._get_latest_model()
         self.model = self._load_model()
 
-        self.df['fast_ma'] = self.df['close'].rolling(fast_ma).mean()
-        self.df['slow_ma'] = self.df['close'].rolling(slow_ma).mean()
-        self.df['rsi3'] = ta.momentum.RSIIndicator(close=self.df['close'], window=3).rsi()
-        self.df['predict'] = self._generate_model_predict()
+        # 均线特征
+        self.df["fast_ma"] = self.df["close"].rolling(fast_ma).mean()
+        self.df["slow_ma"] = self.df["close"].rolling(slow_ma).mean()
 
+        # RSI(3)
+        self.df['rsi3'] = ta.momentum.RSIIndicator(close=self.df['close'], window=3).rsi()
+
+        # 模型预测
+        self.df["predict"] = self._generate_model_predict()
+
+        # warmup
         self.warmup_period = max(fast_ma, slow_ma, 3)
 
-    def _get_latest_model(self):
-        model_dir = "models"
-        candidates = [f for f in os.listdir(model_dir) if f.endswith(".pkl")]
-        if not candidates:
-            raise FileNotFoundError("No XGBoost model found in 'models' directory.")
-        return os.path.join(model_dir, sorted(candidates)[-1])
-
     def _load_model(self):
-        with open(self.model_path, "rb") as f:
+        model_path = r"C:\Users\qianz\Desktop\Untitled Folder\COIN\webUI\models\xgboost_20250414_134129.pkl"
+        with open(model_path, "rb") as f:
             model = pickle.load(f)
         return model
 
@@ -63,6 +67,7 @@ class DualMaStrategy_model:
 
         long_condition = prev["fast_ma"] <= prev["slow_ma"] and row["fast_ma"] > row["slow_ma"]
         short_condition = prev["fast_ma"] >= prev["slow_ma"] and row["fast_ma"] < row["slow_ma"]
+
         model_predict = row["predict"]
 
         if long_condition and model_predict == 1:
